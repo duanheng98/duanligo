@@ -329,7 +329,7 @@ const normalizeVocabItem = (item) => ({
   status: item.status ?? STATUS.NEW,
   familiarity: item.familiarity || 0,
   learningProgress: item.learningProgress || { sentence: 0, select: 0, listening: 0, spelling: 0 },
-  reviewProgress: item.reviewProgress || { spelling: 0, select: 0 },
+  reviewProgress: item.reviewProgress || { spelling: 0, select: 0, reverseSelect: 0 },
   hellProgress: item.hellProgress || { spelling: 0, listening: 0 },
   reviewDates: item.reviewDates || [], 
   isNigate: item.isNigate || false,
@@ -432,6 +432,30 @@ const SelectCardGame = ({ card, options, onAnswer, feedbackState, selectedOption
            }
            return (
              <button key={opt.id} onClick={() => !feedbackState && onAnswer(opt.id, opt.id === card.id)} className={`p-4 rounded-xl transition-all font-medium text-slate-700 text-lg ${btnClass}`}>{opt.german}</button>
+           );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const ReverseSelectGame = ({ card, options, onAnswer, feedbackState, selectedOption }) => {
+  return (
+    <div className="flex flex-col items-center w-full animate-in fade-in slide-in-from-bottom-4 duration-300">
+      <div className="text-sm uppercase text-purple-500 font-bold mb-2 tracking-wider">German to English</div>
+      <h2 className="text-4xl font-bold text-slate-800 mb-8">{card.german}</h2>
+      <div className="grid grid-cols-1 gap-3 w-full max-w-md">
+        {options.map(opt => {
+           let btnClass = "bg-white border-2 border-slate-100 hover:border-purple-400 hover:bg-purple-50";
+           if (feedbackState) {
+               if (opt.id === card.id) btnClass = "bg-green-100 border-2 border-green-500 text-green-800";
+               else if (opt.id === selectedOption) btnClass = "bg-red-100 border-2 border-red-500 text-red-800";
+               else btnClass = "bg-slate-50 border-2 border-slate-100 text-slate-400 opacity-50";
+           }
+           return (
+             <button key={opt.id} onClick={() => !feedbackState && onAnswer(opt.id, opt.id === card.id)} className={`p-4 rounded-xl transition-all font-medium text-slate-700 text-lg ${btnClass}`}>
+                {opt.english}
+             </button>
            );
         })}
       </div>
@@ -635,9 +659,15 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
         return null; 
     }
     if (mode === 'review') {
-        if (card.reviewProgress.select < 2 && card.reviewProgress.spelling < 2) return Math.random() > 0.5 ? 'select' : 'spelling';
-        if (card.reviewProgress.select < 2) return 'select';
-        if (card.reviewProgress.spelling < 2) return 'spelling';
+        const p = card.reviewProgress;
+        const revCount = p.reverseSelect || 0; 
+      
+        let tasks = [];
+        if (p.select < 2) tasks.push('select');
+        if (p.spelling < 2) tasks.push('spelling');
+        if (revCount < 2) tasks.push('reverseSelect');
+
+        if (tasks.length > 0) return tasks[Math.floor(Math.random() * tasks.length)];
         return null;
     }
     const { learningProgress: p } = card;
@@ -661,7 +691,9 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
                  p.spelling >= PROMOTION_REQ.spelling;
       }
       if (mode === 'review') {
-          return card.reviewProgress.select >= 2 && card.reviewProgress.spelling >= 2;
+          return card.reviewProgress.select >= 2 && 
+          card.reviewProgress.spelling >= 2 && 
+          (card.reviewProgress.reverseSelect || 0) >= 2;
       }
       return false;
   };
@@ -735,6 +767,9 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
                } else if (mode === 'review') {
                    if (activeTask === 'select') updatedCard.reviewProgress.select++;
                    if (activeTask === 'spelling') updatedCard.reviewProgress.spelling++;
+                   if (activeTask === 'reverseSelect') {
+                    updatedCard.reviewProgress.reverseSelect = (updatedCard.reviewProgress.reverseSelect || 0) + 1;
+                }
                }
             } else {
                 updatedCard.cumulativeFailures = (updatedCard.cumulativeFailures || 0) + 1;
@@ -894,6 +929,7 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
            {currentCard.isNigate && mode !== 'hell' && (<div className="absolute top-4 right-4 flex items-center gap-1 text-xs font-bold text-red-500 bg-red-100 px-2 py-1 rounded-full"><Skull className="w-3 h-3" /> NIGATE</div>)}
            {activeTask === 'sentence' && <SentenceFillGame key={currentCard.id + 'sen' + sessionStep} card={currentCard} options={currentOptions} onAnswer={handleAnswer} feedbackState={feedbackState} selectedOption={selectedOption} />}
            {activeTask === 'select' && <SelectCardGame key={currentCard.id + 'sel' + sessionStep} card={currentCard} options={currentOptions} onAnswer={handleAnswer} feedbackState={feedbackState} selectedOption={selectedOption} />}
+           {activeTask === 'reverseSelect' && <ReverseSelectGame key={currentCard.id + 'rev' + sessionStep} card={currentCard} options={currentOptions} onAnswer={handleAnswer} feedbackState={feedbackState} selectedOption={selectedOption} />}
            {activeTask === 'listening' && <ListeningGame key={currentCard.id + 'lis' + sessionStep} card={currentCard} options={currentOptions} onAnswer={handleAnswer} feedbackState={feedbackState} selectedOption={selectedOption} />}
            {/* FIX: Add sessionStep to key to force reset on re-render of same word */}
            {activeTask === 'spelling' && <SpellingGame key={currentCard.id + 'spe' + sessionStep} card={currentCard} onAnswer={handleAnswer} feedbackState={feedbackState} />}
