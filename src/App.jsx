@@ -568,7 +568,25 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
        candidates = [...learning];
        if (candidates.length < 8) candidates = [...candidates, ...shuffleArray(brandNew).slice(0, 8 - candidates.length)];
     } else if (mode === 'review') {
-       candidates = shuffleArray(activeList.filter(i => i.status === STATUS.DRIFTING)).slice(0, 10);
+      const driftingPool = activeList.filter(i => i.status === STATUS.DRIFTING);
+       
+      const withProgress = driftingPool.filter(i => 
+          (i.reviewProgress?.select > 0 || i.reviewProgress?.spelling > 0)
+      );
+      const noProgress = driftingPool.filter(i => 
+          (!i.reviewProgress?.select && !i.reviewProgress?.spelling)
+      );
+
+      if (withProgress.length >= 10) {
+          candidates = shuffleArray(withProgress).slice(0, 10);
+      } else {
+
+          const needed = 10 - withProgress.length;
+          candidates = [
+              ...withProgress,
+              ...shuffleArray(noProgress).slice(0, needed)
+          ];
+        }
     } else if (mode === 'hell') {
        candidates = shuffleArray(activeList.filter(i => i.isNigate)).slice(0, 4);
     }
@@ -669,7 +687,7 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
         const updatedStats = { ...sessionStats, [currentCard.id]: { failures: currentFailures, appearances: newAppearances } };
         setSessionStats(updatedStats);
 
-        let updatedCard = { ...currentCard };
+        let updatedCard = { ...currentCard, lastInteraction: Date.now() };
         let nextPool = [...activePool];
         
         if (mode === 'hell') {
@@ -1964,12 +1982,26 @@ const App = () => {
             const timeDiff = now - (item.lastReviewed || now);
             let newItem = item;
             
-            // 如果很久沒複習，本地顯示為 Drifting，但在使用者玩遊戲存檔前，先不寫回資料庫
+            
             if (item.status === STATUS.REVIEW && timeDiff > oneDay) {
                 newItem = { ...item, status: STATUS.DRIFTING, reviewProgress: { spelling: 0, select: 0 } };
             }
             if (item.status === STATUS.MASTERED && timeDiff > (oneDay * 3)) {
                 newItem = { ...item, status: STATUS.DRIFTING, reviewProgress: { spelling: 0, select: 0 } };
+            }
+            if (newItem.status === STATUS.DRIFTING) {
+              
+              const hasProgress = (newItem.reviewProgress?.select > 0 || newItem.reviewProgress?.spelling > 0);
+              
+              const lastTouch = newItem.lastInteraction || now; 
+              
+              if (hasProgress && (now - lastTouch > oneDay)) {
+                  console.log(`Resetting progress for expired word: ${newItem.german}`);
+                  newItem = {
+                      ...newItem,
+                      reviewProgress: { spelling: 0, select: 0 }, 
+                  };
+              }
             }
             return newItem;
         });
