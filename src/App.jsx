@@ -1884,6 +1884,8 @@ const App = () => {
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false); // [修改點 1] 新增儲存狀態
 
+  const [isVideoDone, setIsVideoDone] = useState(false);
+
   // [修改點 2] 使用 Ref 隨時備份當前的進度，用於切換帳號時的數據遷移
   const vocabListRef = useRef([]); 
   useEffect(() => { vocabListRef.current = vocabList; }, [vocabList]);
@@ -2077,7 +2079,27 @@ const App = () => {
 
   const handleOpenVocab = (filter) => { setVocabFilter(filter); setView('vocab'); };
 
-  if (loading) return <div className="h-screen w-full flex items-center justify-center text-indigo-600 flex-col gap-4"><Loader2 className="w-8 h-8 animate-spin"/><p className="text-sm font-bold animate-pulse">Syncing Cloud Data...</p></div>;
+  // 邏輯解釋：只要 (資料還在載) 或者 (影片還沒播完)，就顯示開場畫面
+  if (loading || !isVideoDone) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black">
+        
+        {/* 只留下影片，其他雜訊全部移除 */}
+        <video
+          autoPlay
+          muted
+          playsInline
+          // 關鍵：影片播完時，發出訊號
+          onEnded={() => setIsVideoDone(true)} 
+          // 樣式：滿版 (object-cover)、無透明度 (呈現原色)
+          className="absolute inset-0 w-full h-full object-cover"
+        >
+          <source src="/loading.mp4" type="video/mp4" />
+        </video>
+
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen w-full bg-slate-200 flex items-center justify-center font-sans">
