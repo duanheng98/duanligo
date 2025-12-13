@@ -56,7 +56,9 @@ const firebaseConfig = {
   measurementId: "G-3RH20XBNZ8"
 };
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 // --- INITIAL DATA: 200 Core B1/B2 Vocabulary Items ---
 const INITIAL_VOCAB_DATA = [
   // Nouns (Abstract & Society)
@@ -678,7 +680,9 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
                 if (updatedCard.hellProgress.spelling >= 3 && updatedCard.hellProgress.listening >= 2) {
                     updatedCard.isNigate = false;
                     updatedCard.hellProgress = { spelling: 0, listening: 0 };
-                    updatedCard.status = STATUS.REVIEW; 
+                    if (updatedCard.status > STATUS.LEARNING) {
+                      updatedCard.status = STATUS.REVIEW;
+                    }
                     nextPool = nextPool.filter(c => c.id !== updatedCard.id);
                     setPromotedIds(prev => [...prev, updatedCard]);
                     onUpdateItem(updatedCard);
@@ -1639,7 +1643,7 @@ const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem
 
         <div className="flex-1 p-4 overflow-y-auto">
             <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
-              {['all', 'starred', 'nigate', `status-${STATUS.NEW}`, `status-${STATUS.LEARNING}`, `status-${STATUS.REVIEW}`, `status-${STATUS.DRIFTING}`, `status-${STATUS.MASTERED}`, 'm', 'f', 'n', 'v', 'adj'].map(type => (
+              {['all', 'starred', 'nigate', `status-${STATUS.NEW}`, `status-${STATUS.LEARNING}`, `status-${STATUS.REVIEW}`, `status-${STATUS.DRIFTING}`, `status-${STATUS.MASTERED}`, 'm', 'f', 'n', 'v', 'adj', 'adv'].map(type => (
                 <button key={type} onClick={() => setFilter(type)} className={`px-4 py-1 rounded-full text-sm font-medium capitalize whitespace-nowrap flex items-center gap-1 ${filter === type ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>
                   {type === 'starred' && <Star className="w-3 h-3 fill-current"/>}
                   {type === 'nigate' && <Skull className="w-3 h-3"/>}
@@ -1652,7 +1656,12 @@ const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem
                     <div className="flex gap-2 mb-2">
                         <input className="flex-1 p-2 border rounded font-bold" placeholder="German" value={newWord.german} onChange={e => setNewWord({...newWord, german: e.target.value})} />
                         <select className="p-2 border rounded" value={newWord.gender} onChange={e => setNewWord({...newWord, gender: e.target.value})}>
-                            <option value="m">m</option><option value="f">f</option><option value="n">n</option><option value="v">v</option><option value="adj">adj</option>
+                            <option value="m">m</option>
+                            <option value="f">f</option>
+                            <option value="n">n</option>
+                            <option value="v">v</option>
+                            <option value="adj">adj</option>
+                            <option value="adv">adv</option>
                         </select>
                     </div>
                     <input className="w-full p-2 border rounded mb-2" placeholder="English" value={newWord.english} onChange={e => setNewWord({...newWord, english: e.target.value})} />
@@ -1671,7 +1680,12 @@ const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem
                                 <div className="flex gap-2">
                                     <input className="flex-1 font-bold border-b" value={editForm.german} onChange={e => setEditForm({...editForm, german: e.target.value})}/>
                                     <select className="border-b bg-white" value={editForm.gender} onChange={e => setEditForm({...editForm, gender: e.target.value})}>
-                                        <option value="m">m</option><option value="f">f</option><option value="n">n</option><option value="v">v</option><option value="adj">adj</option>
+                                        <option value="m">m</option>
+                                        <option value="f">f</option>
+                                        <option value="n">n</option>
+                                        <option value="v">v</option>
+                                        <option value="adj">adj</option>
+                                        <option value="adv">adv</option>
                                     </select>
                                 </div>
                                 <input className="w-full border-b" value={editForm.english} onChange={e => setEditForm({...editForm, english: e.target.value})}/>
@@ -1900,7 +1914,7 @@ const App = () => {
     setLoading(true);
     
     // 指向使用者的雲端資料庫路徑
-    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'vocab_ultimate_v7_test'); 
+    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'vocab_ultimate_v7'); 
     
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       // 這裡我們只負責「讀取」並更新畫面，絕對不執行 saveToCloud，避免無窮迴圈
@@ -1991,16 +2005,39 @@ const App = () => {
   }, [authReady, db, user]);
 
   // [修改點 4] 儲存函式增加錯誤處理與 UI 狀態
+// [Debug Version] Save function with English logs
+  // [Debug Version] Save function with English logs
   const saveToCloud = async (newList) => {
-    if (!db || !user) return;
+    // 1. Check basic conditions
+    console.log("[Save Start] Attempting to save...", { 
+        hasDb: !!db, 
+        userId: user ? user.uid : "None", 
+        dataLength: newList ? newList.length : 0 
+    });
+
+    if (!db || !user) {
+        console.error("[Save Failed] Blocked: Database or User is not ready!");
+        return;
+    }
+
     setIsSaving(true);
     try {
-      const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'vocab_ultimate_v7_test');
+      // 2. Define the path (Make sure this matches 'v7' in your useEffect too!)
+      console.log("[Saving] Writing to database for user:", user.uid);
+      
+      // Ensure this path matches the one in your useEffect!
+      const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'vocab_ultimate_v7');
+      
       await setDoc(docRef, { list: newList, lastUpdated: new Date().toISOString() });
-      setTimeout(() => setIsSaving(false), 500);
+      
+      console.log("[Save Success] ✅ Data successfully written to Firebase!");
     } catch (e) { 
-        console.error("Save failed", e); 
-        setIsSaving(false);
+        // 3. Catch the specific error
+        console.error("[Save Error] ❌ Detailed error:", e); 
+        alert("Save Error: " + e.message);
+    } finally {
+        // Force the loading animation to stop after 500ms
+        setTimeout(() => setIsSaving(false), 500);
     }
   };
 
