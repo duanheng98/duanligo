@@ -55,64 +55,6 @@ const firebaseConfig = {
   appId: "1:523701499406:web:a1916c58dc99e4978fae5f",
   measurementId: "G-3RH20XBNZ8"
 };
-
-// --- UTILS: 音效合成器 (Web Audio API) ---
-const playSound = (type) => {
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return;
-  
-  const ctx = new AudioContext();
-  const now = ctx.currentTime;
-
-  // 輔助函式：播放單音
-  const playNote = (freq, wave, duration, startTime = 0, vol = 0.1) => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    
-    osc.type = wave;
-    osc.frequency.setValueAtTime(freq, now + startTime);
-    
-    // 聲音包絡 (Fade out)
-    gain.gain.setValueAtTime(vol, now + startTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + startTime + duration);
-    
-    osc.start(now + startTime);
-    osc.stop(now + startTime + duration);
-  };
-
-  switch (type) {
-    case 'correct':
-      // 1. short high note
-      playNote(880, 'sine', 0.1, 0, 0.1); 
-      break;
-
-    case 'wrong':
-      // 1. short low note
-      playNote(150, 'sawtooth', 0.15, 0, 0.15);
-      break;
-
-    case 'promote':
-      // 2. when a vocab being promoted
-      playNote(523.25, 'sine', 0.1, 0);    // C
-      playNote(659.25, 'sine', 0.1, 0.1);  // E
-      playNote(783.99, 'sine', 0.2, 0.2);  // G
-      break;
-
-    case 'finish':
-      // end of every session
-      const wave = 'triangle';
-      playNote(523.25, wave, 0.1, 0, 0.2);      // Do
-      playNote(659.25, wave, 0.1, 0.15, 0.2);   // Mi
-      playNote(783.99, wave, 0.1, 0.30, 0.2);   // Sol
-      playNote(1046.50, wave, 0.6, 0.45, 0.2);  // High Do (長音)
-      break;
-      
-    default: break;
-  }
-};
-
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -799,12 +741,6 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
       }
   };
 
-  useEffect(() => {
-    if (isFinished) {
-      setTimeout(() => playSound('finish'), 500);
-    }
-  }, [isFinished]);
-
   const initTaskForCard = (card, list) => {
       const task = getTaskForCard(card);
       setActiveTask(task);
@@ -871,8 +807,6 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
     if (isProcessing) return;
     setIsProcessing(true);
 
-    playSound(isCorrect ? 'correct' : 'wrong');
-
     setFeedbackState(isCorrect ? 'correct' : 'wrong');
     setSelectedOption(optionId);
     
@@ -885,7 +819,7 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
     if (activeTask === 'sentence') {
         speak(currentCard.example);
         transitionDelay = 4000; 
-
+        
     } else if (activeTask !== 'spelling' && activeTask !== 'listening') {
         speak(currentCard.german);
         transitionDelay = 1500;
@@ -907,7 +841,6 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
                 if (activeTask === 'listening') updatedCard.hellProgress.listening++;
                 
                 if (updatedCard.hellProgress.spelling >= 3 && updatedCard.hellProgress.listening >= 2) {
-                  setTimeout(() => playSound('promote'), 200);
                     updatedCard.isNigate = false;
                     updatedCard.hellProgress = { spelling: 0, listening: 0 };
                     if (updatedCard.status > STATUS.LEARNING) {
@@ -968,7 +901,6 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
             nextPool = activePool.map(c => c.id === updatedCard.id ? updatedCard : c);
 
             if (isPromoted) {
-              setTimeout(() => playSound('promote'), 200);
                 nextPool = nextPool.filter(c => c.id !== updatedCard.id);
                 let changes = { lastReviewed: Date.now() };
                 
