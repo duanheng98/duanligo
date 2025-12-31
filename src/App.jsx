@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { 
   BookOpen, 
   Gamepad2, 
@@ -59,6 +59,7 @@ const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const STORAGE_KEY = 'vocab_multilingua_v1';
 // --- INITIAL DATA: 200 Core B1/B2 Vocabulary Items ---
 const INITIAL_VOCAB_DATA = [
   // Nouns (Abstract & Society)
@@ -301,12 +302,12 @@ const SESSION_APPEARANCE_LIMIT = 5;
 // --- UTILS ---
 const shuffleArray = (array) => [...array].sort(() => Math.random() - 0.5);
 
-const speak = (text) => {
+const speak = (text, langCode = 'de-DE') => {
   if (!text) return;
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'de-DE';
+    utterance.lang = langCode; // 使用傳入的語言代碼
     utterance.rate = 0.9;
     window.speechSynthesis.speak(utterance);
   }
@@ -342,7 +343,7 @@ const normalizeVocabItem = (item) => ({
 
 // --- SUB-COMPONENTS (Session Games) ---
 
-const StudyCardPreview = ({ card, onReady }) => {
+const StudyCardPreview = ({ card, onReady, langCode }) => {
     return (
         <div className="flex flex-col items-center justify-center h-full w-full p-6 animate-in fade-in zoom-in duration-300">
             <div className="text-center max-w-sm w-full bg-white p-8 rounded-2xl shadow-xl border-2 border-indigo-100">
@@ -352,7 +353,7 @@ const StudyCardPreview = ({ card, onReady }) => {
                 <h2 className="text-4xl font-bold text-slate-800 mb-2">{card.german}</h2>
                 <div className="flex justify-center gap-2 mb-6">
                     <span className="text-sm text-slate-500 italic">{card.gender === 'm' ? 'der' : card.gender === 'f' ? 'die' : card.gender === 'n' ? 'das' : card.gender}</span>
-                    <button onClick={() => speak(card.german)} className="text-indigo-500 hover:text-indigo-700"><Volume2 className="w-5 h-5"/></button>
+                    <button onClick={() => speak(card.german, langCode)} className="text-indigo-500 hover:text-indigo-700"><Volume2 className="w-5 h-5"/></button>
                 </div>
                 <div className="w-full h-px bg-slate-100 my-4"></div>
                 <h3 className="text-2xl font-medium text-slate-600 mb-6">{card.english}</h3>
@@ -662,7 +663,7 @@ const SpellingGame = ({ card, onAnswer, feedbackState }) => {
 };
 
 // --- CORE SESSION CONTROLLER ---
-const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
+const SessionController = ({ vocabList, mode, onComplete, onUpdateItem, langCode }) => {
   const [activePool, setActivePool] = useState([]);
   const [sessionStats, setSessionStats] = useState({});
   const [isFinished, setIsFinished] = useState(false);
@@ -1022,11 +1023,11 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
   }
 
   if (showPreview) {
-      return <StudyCardPreview card={currentCard} onReady={handlePreviewDone} />;
+      return <StudyCardPreview card={currentCard} onReady={handlePreviewDone} langCode={langCode} />;
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-100 max-w-2xl mx-auto shadow-2xl relative">
+    <div className="flex flex-col h-full bg-slate-100 relative">
        <div className="bg-white p-4 flex justify-between items-center shadow-sm z-10">
           <button onClick={onComplete} className="text-slate-400 hover:text-slate-600"><XCircle className="w-6 h-6"/></button>
           <div className="flex items-center gap-2">
@@ -1756,7 +1757,7 @@ const ArcadeContainer = ({ gameType, vocabList, onBack, onUpdateItem }) => {
 };
 
 // --- VOCAB BROWSER ---
-const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem, initialFilter = 'all' }) => {
+const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem, initialFilter = 'all', currentLanguage, langCode }) => { // Added currentLanguage
   const [filter, setFilter] = useState(initialFilter);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -1764,6 +1765,9 @@ const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem
   const [isAdding, setIsAdding] = useState(false);
   const [newWord, setNewWord] = useState({ german: '', english: '', gender: 'm', example: '' });
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  // Use the passed language or default to German
+  const targetLangLabel = currentLanguage || "German";
 
   const filtered = vocabList.filter(item => {
       if (item.isDeleted) return false; 
@@ -1808,7 +1812,7 @@ const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input 
                     className="w-full pl-9 pr-4 py-2 bg-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" 
-                    placeholder="Search vocabulary..." 
+                    placeholder={`Search ${targetLangLabel} vocabulary...`}
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
                 />
@@ -1828,7 +1832,8 @@ const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem
             {isAdding && (
                 <div className="bg-white p-4 rounded-xl shadow-md border-2 border-indigo-500 mb-4 animate-in fade-in zoom-in">
                     <div className="flex gap-2 mb-2">
-                        <input className="flex-1 p-2 border rounded font-bold" placeholder="German" value={newWord.german} onChange={e => setNewWord({...newWord, german: e.target.value})} />
+                        {/* UPDATE: Uses dynamic placeholder */}
+                        <input className="flex-1 p-2 border rounded font-bold" placeholder={targetLangLabel} value={newWord.german} onChange={e => setNewWord({...newWord, german: e.target.value})} />
                         <select className="p-2 border rounded" value={newWord.gender} onChange={e => setNewWord({...newWord, gender: e.target.value})}>
                             <option value="m">m</option>
                             <option value="f">f</option>
@@ -1838,7 +1843,7 @@ const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem
                             <option value="adv">adv</option>
                         </select>
                     </div>
-                    <input className="w-full p-2 border rounded mb-2" placeholder="English" value={newWord.english} onChange={e => setNewWord({...newWord, english: e.target.value})} />
+                    <input className="w-full p-2 border rounded mb-2" placeholder="English / Native" value={newWord.english} onChange={e => setNewWord({...newWord, english: e.target.value})} />
                     <input className="w-full p-2 border rounded mb-2" placeholder="Example Sentence" value={newWord.example} onChange={e => setNewWord({...newWord, example: e.target.value})} />
                     <div className="flex gap-2">
                         <button onClick={saveNew} className="flex-1 bg-green-500 text-white p-2 rounded font-bold">Save</button>
@@ -1905,7 +1910,8 @@ const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem
 
 // --- DASHBOARD (Strictly Defined Before App) ---
 // --- DASHBOARD (修改版：加入 Google 登入) ---
-const Dashboard = ({ vocabList, onStartMode, resetProgress, onOpenVocab, user }) => { // 注意這裡多收了 user
+const Dashboard = ({ vocabList, onStartMode, resetProgress, onOpenVocab, user, currentLanguage, onSwitchDeck, onLogin, onLogout }) => {
+  // 計算統計數據
   const stats = {
       new: vocabList.filter(i => i.status === STATUS.NEW && !i.isDeleted).length,
       learning: vocabList.filter(i => i.status === STATUS.LEARNING && !i.isDeleted).length,
@@ -1915,60 +1921,56 @@ const Dashboard = ({ vocabList, onStartMode, resetProgress, onOpenVocab, user })
       nigate: vocabList.filter(i => i.isNigate && !i.isDeleted).length
   };
 
-  const handleGoogleLogin = async () => {
-      const auth = getAuth();
-      const provider = new GoogleAuthProvider();
-      try {
-          // 這會跳出 Google 登入視窗
-          await signInWithPopup(auth, provider);
-          // 登入成功後，React 會自動偵測到 user 改變，並重新載入雲端進度
-      } catch (error) {
-          console.error("Login failed", error);
-          alert("Login failed: " + error.message);
-      }
-  };
+  
 
-  const handleLogout = () => {
-      const auth = getAuth();
-      signOut(auth).then(() => {
-           // 登出後重新載入頁面，回到匿名狀態
-           window.location.reload();
-      });
-  };
+  // 取得目前語言的旗幟
+  const currentFlag = SUPPORTED_LANGUAGES.find(l => l.code === currentLanguage)?.flag || '🇩🇪';
 
   return (
       <div className="flex flex-col h-full bg-slate-50">
-          <div className="bg-indigo-700 p-8 pb-12 rounded-b-[2.5rem] shadow-xl text-white relative overflow-hidden">
+          <div className="bg-indigo-700 p-6 pb-12 rounded-b-[2.5rem] shadow-xl text-white relative overflow-hidden">
               <div className="absolute top-0 right-0 p-4 opacity-10"><Languages className="w-32 h-32" /></div>
               
-              {/* 頂部導覽列：加入登入/登出按鈕 */}
+              {/* Header Navigation */}
               <div className="flex justify-between items-start relative z-10 mb-6">
-                  <div>
-                      <h1 className="text-3xl font-extrabold mb-2 tracking-tight">Duanlingo</h1>
-                      <p className="text-indigo-200 text-sm">Ultimate Edition</p>
+                  <div className="flex items-center gap-3">
+                      {/* Switch Deck Button */}
+                      <button 
+                        onClick={onSwitchDeck}
+                        className="bg-indigo-600/50 hover:bg-indigo-600 backdrop-blur-sm p-2 rounded-xl border border-indigo-500/50 transition-all flex flex-col items-center justify-center min-w-[50px]"
+                      >
+                         <span className="text-2xl leading-none mb-1">{currentFlag}</span>
+                         <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-200">Switch</span>
+                      </button>
+                      
+                      <div>
+                          <h1 className="text-2xl font-extrabold tracking-tight">Duanlingo</h1>
+                          <p className="text-indigo-200 text-sm font-medium opacity-80">
+                            {currentLanguage || 'German'}
+                          </p>
+                      </div>
                   </div>
+
+                  {/* User Profile / Login */}
                   <div>
                       {user && !user.isAnonymous ? (
-                          <div className="flex items-center gap-2">
+                          <button onClick={onLogout} className="group relative">
                               <img 
-                                src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${user.uid}`}
-                                alt="User Avatar"
+                                src={user.photoURL || `https://api.dicebear.com/9.x/adventurer/svg?seed=${user.uid}`}
+                                alt="User"
                                 className="w-10 h-10 rounded-full border-2 border-white shadow-sm bg-indigo-100" 
                               />
-                              <button onClick={handleLogout} className="bg-indigo-800 hover:bg-indigo-900 text-xs px-3 py-1.5 rounded-full font-bold transition-colors">
-                                  Sign Out
-                              </button>
-                          </div>
+                          </button>
                       ) : (
-                          <button onClick={handleGoogleLogin} className="bg-white text-indigo-700 hover:bg-indigo-50 text-xs px-4 py-2 rounded-full font-bold shadow-md transition-colors flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-                              Login to Save
+                          <button onClick={onLogin} className="bg-white text-indigo-700 hover:bg-indigo-50 text-xs px-4 py-2 rounded-full font-bold shadow-md transition-colors flex items-center gap-2">
+                              Login
                           </button>
                       )}
                   </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-3 gap-2 relative z-10">
+              {/* Stats Grid */}
+              <div className="mt-2 grid grid-cols-3 gap-2 relative z-10">
                   <button onClick={() => onOpenVocab(`status-${STATUS.NEW}`)} className="bg-white/10 backdrop-blur-md p-2 rounded-xl text-center hover:bg-white/20 transition-colors"><div className="flex justify-center mb-1 text-indigo-200"><CircleDashed className="w-4 h-4"/></div><span className="block text-xl font-bold">{stats.new}</span><span className="text-[10px] uppercase tracking-wider opacity-70">New</span></button>
                   <button onClick={() => onOpenVocab(`status-${STATUS.LEARNING}`)} className="bg-white/10 backdrop-blur-md p-2 rounded-xl text-center border border-indigo-400 hover:bg-white/20 transition-colors"><div className="flex justify-center mb-1 text-white"><BookOpen className="w-4 h-4"/></div><span className="block text-xl font-bold">{stats.learning}</span><span className="text-[10px] uppercase tracking-wider opacity-70">Learning</span></button>
                   <button onClick={() => onOpenVocab(`status-${STATUS.REVIEW}`)} className="bg-white/10 backdrop-blur-md p-2 rounded-xl text-center hover:bg-white/20 transition-colors"><div className="flex justify-center mb-1 text-green-300"><CheckCircle className="w-4 h-4"/></div><span className="block text-xl font-bold">{stats.review}</span><span className="text-[10px] uppercase tracking-wider opacity-70">Short Term</span></button>
@@ -1978,6 +1980,7 @@ const Dashboard = ({ vocabList, onStartMode, resetProgress, onOpenVocab, user })
               </div>
           </div>
           
+          {/* Main Action Buttons */}
           <div className="flex-1 p-6 -mt-4 overflow-y-auto space-y-4">
               <div className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Core Path</div>
               <button onClick={() => onStartMode('learning')} disabled={stats.new + stats.learning === 0} className="w-full bg-white p-5 rounded-2xl shadow-sm hover:shadow-md transition-all border border-slate-100 flex items-center gap-4 disabled:opacity-50">
@@ -1990,7 +1993,9 @@ const Dashboard = ({ vocabList, onStartMode, resetProgress, onOpenVocab, user })
                   <div className="text-left flex-1"><h3 className="font-bold text-slate-800">Review Mode</h3><p className="text-slate-500 text-xs">Recover drifting words</p></div>
                   <ArrowRight className="text-slate-300 w-5 h-5" />
               </button>
-              {stats.nigate > 0 && (
+              
+              {/* (其餘 Arcade Buttons 維持不變，篇幅關係這邊省略，請保留原有的按鈕程式碼) */}
+               {stats.nigate > 0 && (
                   <button onClick={() => onStartMode('hell')} className="w-full bg-gradient-to-r from-red-50 to-red-100 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all border border-red-200 flex items-center gap-4">
                       <div className="w-10 h-10 rounded-full bg-red-200 flex items-center justify-center"><Flame className="w-6 h-6 text-red-600 animate-pulse" /></div>
                       <div className="text-left flex-1"><h3 className="font-bold text-red-800">Hell Training</h3><p className="text-red-600 text-xs">Clear NIGATE status</p></div>
@@ -2028,19 +2033,7 @@ const Dashboard = ({ vocabList, onStartMode, resetProgress, onOpenVocab, user })
                       <span className="font-bold text-slate-700 text-sm">Vocabulary Manager</span>
                   </button>
               </div>
-              
-              {/* 顯示目前登入狀態提示 */}
-              <div className="text-center mt-4">
-                   {user && !user.isAnonymous ? (
-                      <p className="text-xs text-green-600 font-bold bg-green-50 inline-block px-3 py-1 rounded-full border border-green-200">
-                         Cloud Sync Active • {user.email}
-                      </p>
-                   ) : (
-                      <p className="text-xs text-slate-400 italic">
-                         Login to save your progress permanently
-                      </p>
-                   )}
-              </div>
+
           </div>
       </div>
   );
@@ -2048,23 +2041,278 @@ const Dashboard = ({ vocabList, onStartMode, resetProgress, onOpenVocab, user })
 
 // --- APP ROOT ---
 // --- APP ROOT (REPLACE THIS ENTIRE COMPONENT) ---
+// --- NEW COMPONENT: Deck & Language Manager (Place before App component) ---
+const DeckSelector = ({ decks, currentDeckId, onChangeDeck, onAddDeck }) => {
+  const [isCreating, setIsCreating] = useState(false);
+  const [newDeckData, setNewDeckData] = useState({ title: '', language: 'English' });
+
+  const handleCreate = () => {
+    if (!newDeckData.title) return;
+    onAddDeck(newDeckData.title, newDeckData.language);
+    setIsCreating(false);
+    setNewDeckData({ title: '', language: 'English' });
+  };
+
+  const activeDeck = decks[currentDeckId];
+
+  return (
+    <div className="bg-slate-800 text-white p-4 shrink-0">
+      <div className="flex justify-between items-center max-w-md mx-auto">
+        
+        {/* Left: Current Selected Deck */}
+        <div className="flex items-center gap-3 overflow-hidden">
+          <div className="bg-indigo-500 p-2 rounded-lg shrink-0">
+            <Languages className="w-5 h-5 text-white" />
+          </div>
+          <div className="flex flex-col overflow-hidden">
+            <span className="text-[10px] text-indigo-300 font-bold uppercase tracking-wider">Current Deck</span>
+            <div className="relative">
+                <select 
+                value={currentDeckId} 
+                onChange={(e) => onChangeDeck(e.target.value)}
+                className="bg-transparent font-bold text-lg focus:outline-none cursor-pointer appearance-none text-white w-full pr-4 truncate"
+                >
+                {Object.values(decks).map(deck => (
+                    <option key={deck.id} value={deck.id} className="text-slate-900">
+                    {deck.language} - {deck.title}
+                    </option>
+                ))}
+                </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Add Button */}
+        <button 
+          onClick={() => setIsCreating(true)}
+          className="bg-indigo-600 hover:bg-indigo-500 p-2 rounded-full transition-colors shrink-0 shadow-lg border border-indigo-400"
+        >
+          <Plus className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Modal for adding new deck */}
+      {isCreating && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+          <div className="bg-white text-slate-800 p-6 rounded-2xl shadow-2xl w-full max-w-sm animate-in zoom-in">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <Plus className="w-6 h-6 text-indigo-600" /> Create New Deck
+            </h3>
+            
+            <label className="block text-sm font-bold text-slate-500 mb-1">Language</label>
+            <select 
+              className="w-full p-3 bg-slate-100 rounded-xl mb-4 border border-slate-200 outline-none focus:border-indigo-500"
+              value={newDeckData.language}
+              onChange={e => setNewDeckData({...newDeckData, language: e.target.value})}
+            >
+              <option value="German">German (Deutsch)</option>
+              <option value="English">English</option>
+              <option value="Spanish">Spanish (Español)</option>
+              <option value="French">French (Français)</option>
+              <option value="Japanese">Japanese (日本語)</option>
+              <option value="Korean">Korean (한국어)</option>
+              <option value="Italian">Italian (Italiano)</option>
+              <option value="Chinese">Chinese (中文)</option>
+            </select>
+
+            <label className="block text-sm font-bold text-slate-500 mb-1">Deck Name</label>
+            <input 
+              className="w-full p-3 bg-slate-100 rounded-xl mb-6 border border-slate-200 outline-none focus:border-indigo-500"
+              placeholder="e.g. Travel Basics..."
+              value={newDeckData.title}
+              onChange={e => setNewDeckData({...newDeckData, title: e.target.value})}
+            />
+
+            <div className="flex gap-3">
+              <button onClick={() => setIsCreating(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
+              <button onClick={handleCreate} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 transition-colors">Create</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- CONSTANTS: Supported Languages ---
+const SUPPORTED_LANGUAGES = [
+  { code: 'German', label: 'German (Deutsch)', flag: '🇩🇪', color: 'bg-yellow-500', speechCode: 'de-DE' },
+  { code: 'Spanish', label: 'Spanish (Español)', flag: '🇪🇸', color: 'bg-orange-500', speechCode: 'es-ES' },
+  { code: 'Italian', label: 'Italian (Italiano)', flag: '🇮🇹', color: 'bg-green-600', speechCode: 'it-IT' },
+  { code: 'French', label: 'French (Français)', flag: '🇫🇷', color: 'bg-blue-600', speechCode: 'fr-FR' },
+  { code: 'Dutch', label: 'Dutch (Nederlands)', flag: '🇳🇱', color: 'bg-orange-400', speechCode: 'nl-NL' },
+  { code: 'Russian', label: 'Russian (Русский)', flag: '🇷🇺', color: 'bg-red-600', speechCode: 'ru-RU' },
+];
+
+// --- NEW COMPONENT: Deck Library (The Menu Page) ---
+// 修改原本的 DeckLibrary 元件
+// 加入 user, onLogin, onLogout 這三個新的 props
+const DeckLibrary = ({ decks, onSelectDeck, onAddDeck, user, onLogin, onLogout }) => {
+  const [isCreating, setIsCreating] = useState(false);
+  const [newDeckData, setNewDeckData] = useState({ title: '', language: 'German' });
+
+  const handleCreate = () => {
+    if (!newDeckData.title) return;
+    onAddDeck(newDeckData.title, newDeckData.language);
+    setIsCreating(false);
+    setNewDeckData({ title: '', language: 'German' });
+  };
+
+  const getLangInfo = (langCode) => SUPPORTED_LANGUAGES.find(l => l.code === langCode) || SUPPORTED_LANGUAGES[0];
+
+  return (
+    <div className="flex flex-col h-full bg-slate-50 relative overflow-hidden">
+      {/* 1. Header 修改：加入使用者資訊與登出按鈕 */}
+      <div className="bg-slate-900 text-white p-8 pt-12 pb-16 rounded-b-[3rem] shadow-xl relative z-10 flex flex-col items-center">
+         
+         {/* User Profile Section (Top Right) */}
+         <div className="absolute top-6 right-6">
+            {user && !user.isAnonymous ? (
+                <div className="flex items-center gap-3 bg-slate-800 p-1.5 pl-3 rounded-full border border-slate-700">
+                    <div className="text-xs text-slate-300 font-medium">
+                        {user.displayName?.split(' ')[0] || 'User'}
+                    </div>
+                    <button 
+                        onClick={onLogout}
+                        className="bg-slate-700 hover:bg-slate-600 text-xs px-3 py-1.5 rounded-full transition-colors font-bold text-slate-200"
+                    >
+                        Switch / Logout
+                    </button>
+                    <img 
+                        src={user.photoURL || `https://api.dicebear.com/9.x/adventurer/svg?seed=${user.uid}`} 
+                        alt="User" 
+                        className="w-8 h-8 rounded-full border-2 border-slate-600"
+                    />
+                </div>
+            ) : (
+                <button 
+                    onClick={onLogin}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2 rounded-full font-bold shadow-lg transition-all flex items-center gap-2"
+                >
+                    Login to Sync
+                </button>
+            )}
+         </div>
+
+         <h1 className="text-4xl font-extrabold mb-2 tracking-tight mt-4">Your Library</h1>
+         <p className="text-slate-400">Select a language deck to start learning</p>
+      </div>
+
+      {/* Grid Content (保持不變) */}
+      <div className="flex-1 overflow-y-auto p-6 -mt-10 relative z-20">
+        <div className="grid grid-cols-1 gap-4 max-w-md mx-auto">
+          {/* Create New Deck Button */}
+          <button 
+            onClick={() => setIsCreating(true)}
+            className="bg-white p-6 rounded-2xl shadow-sm border-2 border-dashed border-indigo-200 flex items-center justify-center gap-3 hover:bg-indigo-50 hover:border-indigo-400 transition-all group"
+          >
+            <div className="bg-indigo-100 p-3 rounded-full group-hover:bg-indigo-200 transition-colors">
+                <Plus className="w-6 h-6 text-indigo-600" />
+            </div>
+            <span className="font-bold text-slate-600 group-hover:text-indigo-700">Create New Deck</span>
+          </button>
+
+          {/* Existing Decks */}
+          {Object.values(decks).map(deck => {
+            const langInfo = getLangInfo(deck.language);
+            const wordCount = deck.words ? deck.words.filter(w => !w.isDeleted).length : 0;
+            const masteredCount = deck.words ? deck.words.filter(w => w.status === STATUS.MASTERED && !w.isDeleted).length : 0;
+            
+            return (
+              <button 
+                key={deck.id} 
+                onClick={() => onSelectDeck(deck.id)}
+                className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md hover:border-indigo-200 transition-all text-left flex items-center gap-4 relative overflow-hidden group"
+              >
+                <div className="absolute right-0 top-0 p-10 bg-slate-50 rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity -mr-8 -mt-8 pointer-events-none"></div>
+                <div className="text-4xl shadow-sm rounded-lg overflow-hidden">{langInfo.flag}</div>
+                <div className="flex-1 relative z-10">
+                  <h3 className="font-bold text-slate-800 text-lg">{deck.title}</h3>
+                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-1">{langInfo.label}</p>
+                  <div className="flex items-center gap-3 text-xs text-slate-400">
+                    <span className="flex items-center gap-1"><ListChecks className="w-3 h-3" /> {wordCount} words</span>
+                    <span className="flex items-center gap-1 text-yellow-600"><Trophy className="w-3 h-3" /> {masteredCount} mastered</span>
+                  </div>
+                </div>
+                <ArrowRight className="text-slate-300 w-5 h-5 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Create Modal (保持不變) */}
+      {isCreating && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+          <div className="bg-white text-slate-800 p-6 rounded-3xl shadow-2xl w-full max-w-sm animate-in zoom-in">
+            <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                <div className="bg-indigo-100 p-2 rounded-lg"><Plus className="w-5 h-5 text-indigo-600" /></div>
+                New Language Deck
+            </h3>
+            
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Select Language</label>
+            <div className="grid grid-cols-2 gap-2 mb-6">
+                {SUPPORTED_LANGUAGES.map(lang => (
+                    <button
+                        key={lang.code}
+                        onClick={() => setNewDeckData({...newDeckData, language: lang.code})}
+                        className={`p-3 rounded-xl border-2 text-left transition-all ${newDeckData.language === lang.code ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200'}`}
+                    >
+                        <div className="text-2xl mb-1">{lang.flag}</div>
+                        <div className={`text-xs font-bold ${newDeckData.language === lang.code ? 'text-indigo-700' : 'text-slate-600'}`}>{lang.code}</div>
+                    </button>
+                ))}
+            </div>
+
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Deck Name</label>
+            <input 
+              className="w-full p-4 bg-slate-50 rounded-xl mb-6 border-2 border-transparent focus:bg-white focus:border-indigo-500 outline-none transition-all font-bold text-slate-700"
+              placeholder="e.g. Travel Basics..."
+              value={newDeckData.title}
+              onChange={e => setNewDeckData({...newDeckData, title: e.target.value})}
+            />
+
+            <div className="flex gap-3">
+              <button onClick={() => setIsCreating(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
+              <button onClick={handleCreate} className="flex-1 py-3 bg-slate-900 text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 transition-all transform active:scale-95">Create Deck</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- APP ROOT (COMPLETE REWRITE) ---
+// --- APP ROOT (COMPLETE REWRITE) ---
+// --- APP ROOT (COMPLETE REWRITE) ---
 const App = () => {
-  const [view, setView] = useState('home'); 
-  const [vocabList, setVocabList] = useState([]);
-  const [vocabFilter, setVocabFilter] = useState('all');
+  // Start in 'home' or 'decks' depending on preference. 'home' defaults to the last active deck.
+  const [view, setView] = useState('decks');
+  
+  // [Core State Change] 'decks' replaces the original 'vocabList'
+  const [decks, setDecks] = useState({
+    'default': { id: 'default', title: 'Loading...', language: 'German', words: [] }
+  });
+  const [currentDeckId, setCurrentDeckId] = useState('default');
+  
+  // [Derived State] Dynamically calculated so child components still see a single list
+  const currentDeck = decks[currentDeckId] || Object.values(decks)[0] || { words: [], language: 'German' };
+  const currentSpeechCode = SUPPORTED_LANGUAGES.find(l => l.code === currentDeck.language)?.speechCode || 'de-DE';
+  const vocabList = currentDeck.words || [];
+
   const [db, setDb] = useState(null);
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false); // [修改點 1] 新增儲存狀態
-
+  const [isSaving, setIsSaving] = useState(false);
   const [isVideoDone, setIsVideoDone] = useState(false);
 
-  // [修改點 2] 使用 Ref 隨時備份當前的進度，用於切換帳號時的數據遷移
-  const vocabListRef = useRef([]); 
-  useEffect(() => { vocabListRef.current = vocabList; }, [vocabList]);
+  // [Ref] Back up current Decks state for anonymous data migration upon login
+  const decksRef = useRef(decks); 
+  useEffect(() => { decksRef.current = decks; }, [decks]);
 
-  // 初始化 Firebase Auth
+  // 1. Initialize Firebase Auth
   useEffect(() => {
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
@@ -2079,264 +2327,283 @@ const App = () => {
         await signInAnonymously(auth);
       }
     });
-  
     return unsubscribe;
   }, []);
 
-  // [修改點 3] 核心資料同步邏輯 (包含遷移與讀取)
-  // [修改點 3] 核心資料同步邏輯 (修正版：已移除無限迴圈)
+  // 2. Core Data Sync & Migration Logic (Smart Auto-Restore)
+  // [Logic] Checks if v8 (new) data is empty. If so, forces a check for v7 (old) data to auto-migrate.
+  // 2. Core Data Sync & Migration Logic (Smart Auto-Restore)
+  
+  // 2. Core Data Sync (Clean Version - No Migration)
   useEffect(() => {
     if (!authReady || !db || !user) return;
     setLoading(true);
     
-    // 指向使用者的雲端資料庫路徑
-    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'vocab_ultimate_v7'); 
+    // 使用新的路徑
+    const docRef = doc(db, 'users', user.uid, 'data', 'vocab_multilingua_v1');
     
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      // 這裡我們只負責「讀取」並更新畫面，絕對不執行 saveToCloud，避免無窮迴圈
-      
+    const unsubscribe = onSnapshot(docRef, async (docSnap) => {
       if (docSnap.exists()) {
-        // --- 情況 A：雲端有資料 ---
-        console.log("Cloud update received");
-        const savedData = docSnap.data().list;
-        let merged = [];
+        // --- CASE A: 載入現有資料 (Load Existing) ---
+        console.log("Loading Cloud Data...");
+        const data = docSnap.data();
         
-        if (Array.isArray(savedData)) {
-            merged = FULL_VOCAB_DATA.map(staticItem => {
-                const savedItem = savedData.find(s => s.id === staticItem.id);
-                if (savedItem) {
-                    if (savedItem.isCustomized) return normalizeVocabItem(savedItem);
-                    return {
-                        ...staticItem, 
-                        // 展開所有已存欄位
-                        familiarity: savedItem.familiarity,
-                        status: savedItem.status,
-                        learningProgress: savedItem.learningProgress,
-                        reviewProgress: savedItem.reviewProgress,
-                        hellProgress: savedItem.hellProgress,
-                        reviewDates: savedItem.reviewDates,
-                        isNigate: savedItem.isNigate,
-                        isStarred: savedItem.isStarred,
-                        lastReviewed: savedItem.lastReviewed,
-                        isCustomized: false,
-                        isDeleted: savedItem.isDeleted || false,
-                        successStreak: savedItem.successStreak || 0
-                    };
-                }
-                return normalizeVocabItem(staticItem);
-            });
-            const custom = savedData.filter(s => !FULL_VOCAB_DATA.find(f => f.id === s.id));
-            merged = [...custom, ...merged];
-        } else {
-             merged = FULL_VOCAB_DATA.map(normalizeVocabItem);
+        // 簡單的防呆：確認資料格式大致正確
+        if (data && data.decks) {
+             setDecks(data.decks);
+             // 如果找不到 currentDeckId，就預設用第一個 deck
+             const firstDeckId = Object.keys(data.decks)[0];
+             setCurrentDeckId(data.currentDeckId || firstDeckId);
         }
-
-        // 處理遺忘機制 (Drifting) - 只更新本地狀態，不立即寫回雲端
-        const now = Date.now();
-        const oneDay = 24 * 60 * 60 * 1000;
-        const processed = merged.map(item => {
-            const timeDiff = now - (item.lastReviewed || now);
-            let newItem = item;
-            
-            
-            if (item.status === STATUS.REVIEW && timeDiff > oneDay) {
-                newItem = { ...item, status: STATUS.DRIFTING, reviewProgress: { spelling: 0, select: 0 } };
-            }
-            if (item.status === STATUS.MASTERED && timeDiff > (oneDay * 3)) {
-                newItem = { ...item, status: STATUS.DRIFTING, reviewProgress: { spelling: 0, select: 0 } };
-            }
-            if (newItem.status === STATUS.DRIFTING) {
-              
-              const hasProgress = (newItem.reviewProgress?.select > 0 || newItem.reviewProgress?.spelling > 0);
-              
-              const lastTouch = newItem.lastInteraction || now; 
-              
-              if (hasProgress && (now - lastTouch > oneDay)) {
-                  console.log(`Resetting progress for expired word: ${newItem.german}`);
-                  newItem = {
-                      ...newItem,
-                      reviewProgress: { spelling: 0, select: 0 }, 
-                  };
-              }
-            }
-            return newItem;
-        });
-
-        setVocabList(processed);
-        // [重要修改] 這裡移除了 saveToCloud(processed)，切斷了迴圈。
-        // 資料會在使用者下次玩遊戲時自然被保存。
+        setLoading(false);
 
       } else {
-        // --- 情況 B：雲端無資料 (新帳號/遷移) ---
+        // --- CASE B: 全新用戶初始化 (Fresh Start) ---
+        // 這裡完全不管舊資料，直接給他一套全新的德語牌組
+        console.log("No data found. Initializing new user...");
         
-        // 檢查 Ref 裡面有沒有剛才玩過的匿名進度
-        const currentLocalData = vocabListRef.current;
-        // 嚴格檢查：必須真的有玩過 (familiarity > 0) 才算有進度
-        const hasLocalProgress = currentLocalData && currentLocalData.length > 0 && currentLocalData.some(i => (i.familiarity > 0 || i.status > 0) && !i.isDeleted);
+        const initDeckId = 'german_core';
+        const initDecks = {
+            [initDeckId]: {
+                id: initDeckId,
+                title: 'Core B1/B2',
+                language: 'German',
+                // 使用你預設的 FULL_VOCAB_DATA
+                words: FULL_VOCAB_DATA.map(normalizeVocabItem)
+            }
+        };
 
-        if (hasLocalProgress) {
-            // [關鍵] 智慧遷移：把匿名進度上傳到這個新帳號
-            console.log("Migrating local progress to new cloud account...");
-            // 這裡可以呼叫 saveToCloud，因為這只會發生一次 (存完後 docSnap.exists 就會變成 true)
-            saveToCloud(currentLocalData);
-            // 畫面保持不變，直接使用本地資料
-            setVocabList(currentLocalData);
-        } else {
-            // 如果連本地也是空的，那就初始化
-            console.log("Initializing fresh data");
-            const initList = FULL_VOCAB_DATA.map(normalizeVocabItem);
-            setVocabList(initList);
-            saveToCloud(initList);
-        }
+        // 直接寫入資料庫
+        await setDoc(docRef, { 
+            decks: initDecks, 
+            currentDeckId: initDeckId,
+            lastUpdated: new Date().toISOString() 
+        });
+        
+        // 設定本地 State
+        setDecks(initDecks);
+        setCurrentDeckId(initDeckId);
+        setLoading(false);
       }
-      setLoading(false);
     });
     return () => unsubscribe();
   }, [authReady, db, user]);
 
-  // [修改點 4] 儲存函式增加錯誤處理與 UI 狀態
-// [Debug Version] Save function with English logs
-  // [Debug Version] Save function with English logs
-  const saveToCloud = async (newList) => {
-    // 1. Check basic conditions
-    console.log("[Save Start] Attempting to save...", { 
-        hasDb: !!db, 
-        userId: user ? user.uid : "None", 
-        dataLength: newList ? newList.length : 0 
-    });
-
-    if (!db || !user) {
-        console.error("[Save Failed] Blocked: Database or User is not ready!");
-        return;
-    }
-
+  // 3. Save Function
+  const saveToCloud = async (newDecks, activeId) => {
+    if (!db || !user) return;
     setIsSaving(true);
     try {
-      // 2. Define the path (Make sure this matches 'v7' in your useEffect too!)
-      console.log("[Saving] Writing to database for user:", user.uid);
+      // 確保這裡的路徑跟上面 useEffect 的路徑一模一樣！
+      const docRef = doc(db, 'users', user.uid, 'data', 'vocab_multilingua_v1');
       
-      // Ensure this path matches the one in your useEffect!
-      const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'vocab_ultimate_v7');
-      
-      await setDoc(docRef, { list: newList, lastUpdated: new Date().toISOString() });
-      
-      console.log("[Save Success] ✅ Data successfully written to Firebase!");
+      await setDoc(docRef, { 
+          decks: newDecks, 
+          currentDeckId: activeId || currentDeckId,
+          lastUpdated: new Date().toISOString() 
+      });
     } catch (e) { 
-        // 3. Catch the specific error
-        console.error("[Save Error] ❌ Detailed error:", e); 
-        alert("Save Error: " + e.message);
+        console.error("Save Error:", e);
     } finally {
-        // Force the loading animation to stop after 500ms
         setTimeout(() => setIsSaving(false), 500);
     }
   };
 
+  const handleGoogleLogin = async () => {
+    const auth = getAuth();
+    const provider = new GoogleAuthProvider();
+
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    try {
+        await signInWithPopup(auth, provider);
+    } catch (error) {
+        console.error("Login failed", error);
+        alert("Login failed: " + error.message);
+    }
+  };
+
+  const handleLogout = () => {
+    const auth = getAuth();
+    signOut(auth).then(() => {
+         // 登出後，會觸發 useEffect 的 onAuthStateChanged
+         // 那裡會自動把你登入為「匿名帳戶」，這就達到了「換一個帳號」的效果
+         // 並且我們強制回到 DeckLibrary 畫面
+         setView('decks');
+         window.location.reload(); // 重整頁面最乾淨
+    });
+  };
+
+  // 4. CRUD Handlers 
   const handleUpdateItem = (updatedItem) => {
-      setVocabList(prev => {
-          const newList = prev.map(i => i.id === updatedItem.id ? updatedItem : i);
-          saveToCloud(newList);
-          return newList;
+      setDecks(prevDecks => {
+          const targetDeck = prevDecks[currentDeckId];
+          const newWords = targetDeck.words.map(i => i.id === updatedItem.id ? updatedItem : i);
+          const newDecks = {
+              ...prevDecks,
+              [currentDeckId]: { ...targetDeck, words: newWords }
+          };
+          saveToCloud(newDecks, currentDeckId); 
+          return newDecks;
       });
   };
 
   const handleDeleteItem = (id) => {
-      setVocabList(prev => {
-          const newList = prev.map(i => i.id === id ? { ...i, isDeleted: true } : i);
-          saveToCloud(newList);
-          return newList;
+      setDecks(prevDecks => {
+        const targetDeck = prevDecks[currentDeckId];
+        const newWords = targetDeck.words.map(i => i.id === id ? { ...i, isDeleted: true } : i);
+        const newDecks = {
+            ...prevDecks,
+            [currentDeckId]: { ...targetDeck, words: newWords }
+        };
+        saveToCloud(newDecks, currentDeckId);
+        return newDecks;
       });
-  };
-
-  const handleHardReset = async () => {
-    if(confirm("Reset entire system to start?")) {
-        const resetList = FULL_VOCAB_DATA.map(normalizeVocabItem);
-        setVocabList(resetList);
-        await saveToCloud(resetList);
-    }
   };
 
   const handleAddItem = (newItem) => {
-      setVocabList(prev => {
-          const maxId = prev.reduce((acc, curr) => Math.max(acc, curr.id), 1000);
+      setDecks(prevDecks => {
+          const targetDeck = prevDecks[currentDeckId];
+          const maxId = targetDeck.words.reduce((acc, curr) => Math.max(acc, curr.id), 1000);
           const item = normalizeVocabItem({ ...newItem, id: maxId + 1, isCustomized: true });
-          const next = [item, ...prev];
-          saveToCloud(next);
-          return next;
+          
+          const newDecks = {
+              ...prevDecks,
+              [currentDeckId]: { ...targetDeck, words: [item, ...targetDeck.words] }
+          };
+          saveToCloud(newDecks, currentDeckId);
+          return newDecks;
       });
   };
 
-  const handleOpenVocab = (filter) => { setVocabFilter(filter); setView('vocab'); };
+  const handleAddDeck = (title, language) => {
+    const newId = `deck_${Date.now()}`;
+    const newDeck = {
+        id: newId,
+        title: title,
+        language: language,
+        words: [] 
+    };
+    
+    setDecks(prev => {
+        const next = { ...prev, [newId]: newDeck };
+        saveToCloud(next, newId); 
+        return next;
+    });
+    setCurrentDeckId(newId);
+    setView('vocab'); 
+  };
 
-  // 邏輯解釋：只要 (資料還在載) 或者 (影片還沒播完)，就顯示開場畫面
+  const handleSelectDeck = (deckId) => {
+    setCurrentDeckId(deckId);
+    saveToCloud(decks, deckId);
+    setView('home'); // 選完牌組後，進入 Dashboard
+  };
+
+  const handleHardReset = async () => {
+    if(confirm("Reset ENTIRE deck to defaults? This cannot be undone.")) {
+        const resetDeck = {
+            ...currentDeck,
+            words: FULL_VOCAB_DATA.map(normalizeVocabItem)
+        };
+        setDecks(prev => {
+            const next = { ...prev, [currentDeckId]: resetDeck };
+            saveToCloud(next, currentDeckId);
+            return next;
+        });
+    }
+  };
+
+  const handleOpenVocab = (filter) => { setVocabFilter(filter); setView('vocab'); };
+  const [vocabFilter, setVocabFilter] = useState('all');
+
   if (loading || !isVideoDone) {
     return (
-      // 1. 背景設為黑色 (bg-black)，這樣影片的邊界就會跟背景融合
       <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
-        
         <video
-          autoPlay
-          muted
-          playsInline
+          autoPlay muted playsInline
           onEnded={() => setIsVideoDone(true)} 
-          // 2. [關鍵修改] 改成 object-contain
-          // 意思：保持 1:1 比例，完整顯示在螢幕內，不要裁切
           className="absolute inset-0 w-full h-full object-contain"
         >
           <source src="/loading.mp4" type="video/mp4" />
         </video>
-
       </div>
     );
   }
 
   return (
-    <div className="h-screen w-full bg-slate-200 flex items-center justify-center font-sans">
-      <div className="w-full max-w-md h-full md:h-[90vh] bg-white md:rounded-[2rem] overflow-hidden shadow-2xl relative">
+  <div className="h-screen w-full bg-slate-200 flex items-center justify-center font-sans">
+    <div className="w-full max-w-md h-full md:h-[90vh] bg-white md:rounded-[2rem] overflow-hidden shadow-2xl relative flex flex-col">
+        
+        {isSaving && (
+            <div className="absolute top-4 right-4 z-50 bg-white/80 backdrop-blur text-indigo-600 text-xs font-bold px-3 py-1 rounded-full shadow-sm flex items-center gap-2 border border-indigo-100 animate-in fade-in slide-in-from-top-2">
+                <Loader2 className="w-3 h-3 animate-spin" /> Saving...
+            </div>
+        )}
+
+        <div className="flex-1 overflow-hidden relative flex flex-col">
           
-          {/* [修改點 5] 畫面右上角顯示儲存中動畫 */}
-          {isSaving && (
-              <div className="absolute top-4 right-4 z-50 bg-white/80 backdrop-blur text-indigo-600 text-xs font-bold px-3 py-1 rounded-full shadow-sm flex items-center gap-2 border border-indigo-100 animate-in fade-in slide-in-from-top-2">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Saving...
-              </div>
+          {view === 'decks' && (
+             <DeckLibrary 
+                decks={decks} 
+                user={user} // 傳入使用者資訊
+                onLogin={handleGoogleLogin} // 傳入登入函式
+                onLogout={handleLogout} // 傳入登出函式
+                onSelectDeck={handleSelectDeck}
+                onAddDeck={handleAddDeck}
+             />
           )}
 
           {view === 'home' && (
               <Dashboard 
-              vocabList={vocabList} 
-              onStartMode={setView} 
-              resetProgress={handleHardReset} 
-              onOpenVocab={handleOpenVocab}
-              user={user} 
+                  vocabList={vocabList} 
+                  onStartMode={setView} 
+                  resetProgress={handleHardReset} 
+                  onOpenVocab={handleOpenVocab}
+                  user={user} 
+                  currentLanguage={currentDeck.language}
+                  onSwitchDeck={() => setView('decks')} 
+
+                  onLogin={handleGoogleLogin}
+                  onLogout={handleLogout}
               />
           )}
+
           {(view === 'learning' || view === 'review' || view === 'hell') && (
               <SessionController 
                   mode={view} 
                   vocabList={vocabList} 
+                  langCode={currentSpeechCode}
                   onComplete={() => setView('home')}
                   onUpdateItem={handleUpdateItem}
               />
           )}
+
           {view.startsWith('arcade-') && (
               <ArcadeContainer 
                   vocabList={vocabList} 
                   gameType={view.replace('arcade-', '')}
+                  langCode={currentSpeechCode}
                   onBack={() => setView('home')} 
                   onUpdateItem={handleUpdateItem}
               />
           )}
+
           {view === 'vocab' && (
               <VocabBrowser 
-                vocabList={vocabList} 
-                onBack={() => setView('home')} 
-                onUpdateItem={handleUpdateItem}
-                onAddItem={handleAddItem}
-                onDeleteItem={handleDeleteItem}
-                initialFilter={vocabFilter}
+                  vocabList={vocabList} 
+                  langCode={currentSpeechCode}
+                  onBack={() => setView('home')} 
+                  onUpdateItem={handleUpdateItem}
+                  onAddItem={handleAddItem}
+                  onDeleteItem={handleDeleteItem}
+                  initialFilter={vocabFilter}
+                  currentLanguage={currentDeck.language}
               />
           )}
-      </div>
+        </div>
     </div>
+  </div>
   );
 };
 
