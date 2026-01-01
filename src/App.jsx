@@ -473,7 +473,7 @@ const normalizeVocabItem = (item) => ({
   status: item.status ?? STATUS.NEW,
   familiarity: item.familiarity || 0,
   learningProgress: item.learningProgress || { sentence: 0, select: 0, listening: 0, spelling: 0 },
-  reviewProgress: item.reviewProgress || { spelling: 0, select: 0, reverseSelect: 0 },
+  reviewProgress: item.reviewProgress || { spelling: 0, select: 0, reverseSelect: 0, sentence: 0 },
   hellProgress: item.hellProgress || { spelling: 0, listening: 0 },
   reviewDates: item.reviewDates || [], 
   isNigate: item.isNigate || false,
@@ -905,11 +905,13 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem, langCode
     if (mode === 'review') {
         const p = card.reviewProgress;
         const revCount = p.reverseSelect || 0; 
+        const sentCount = p.sentence || 0;
       
         let tasks = [];
         if (p.select < 2) tasks.push('select');
         if (p.spelling < 2) tasks.push('spelling');
         if (revCount < 2) tasks.push('reverseSelect');
+        if (sentCount < 1) tasks.push('sentence');
 
         if (tasks.length > 0) return tasks[Math.floor(Math.random() * tasks.length)];
         return null;
@@ -937,7 +939,8 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem, langCode
       if (mode === 'review') {
           return card.reviewProgress.select >= 2 && 
           card.reviewProgress.spelling >= 2 && 
-          (card.reviewProgress.reverseSelect || 0) >= 2;
+          (card.reviewProgress.reverseSelect || 0) >= 2 &&
+          (card.reviewProgress.sentence || 0) >= 1;
       }
       return false;
   };
@@ -1027,6 +1030,9 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem, langCode
                    if (activeTask === 'reverseSelect') {
                     updatedCard.reviewProgress.reverseSelect = (updatedCard.reviewProgress.reverseSelect || 0) + 1;
                 }
+                   if (activeTask === 'sentence') {
+                  updatedCard.reviewProgress.sentence = (updatedCard.reviewProgress.sentence || 0) + 1;
+             }
                }
             } else {
                 updatedCard.cumulativeFailures = (updatedCard.cumulativeFailures || 0) + 1;
@@ -2550,6 +2556,85 @@ const App = () => {
     return () => unsubscribe();
   }, [authReady, db, user]);
 
+  // --- 新增：遺忘曲線檢查 (Strict Time Decay) ---
+  useEffect(() => {
+    // 如果沒有牌組或單字，就不執行
+    if (!currentDeck || !currentDeck.words || currentDeck.words.length === 0) return;
+
+    const ONE_DAY = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let hasChanges = false;
+
+    const updatedWords = currentDeck.words.map(item => {
+        if (item.isDeleted || item.isNigate) return item;
+
+        let newItem = { ...item };
+        // 優先使用 lastReviewed，如果沒有則使用 lastInteraction
+        const lastTouch = newItem.lastReviewed || newItem.lastInteraction || 0;
+        const timeDiff = now - lastTouch;
+
+        // 規則 1: Review (Short Term) 超過 1 天沒碰 -> 掉回 Drifting
+        if (newItem.status === STATUS.REVIEW && timeDiff > ONE_DAY) {
+            newItem = { 
+                ...newItem, 
+                status: STATUS.DRIFTING, 
+                // 掉回去時，所有 Review 進度歸零
+                reviewProgress: { spelling: 0, select: 0, reverseSelect: 0, sentence: 0 } 
+            };
+            hasChanges = true;
+        }
+        
+        // 規則 2: Mastered 超過 5 天沒碰 -> 掉回 Drifting
+        if (newItem.status === STATUS.MASTERED && timeDiff > (ONE_DAY * 5)) {
+            newItem = { 
+                ...newItem, 
+                status: STATUS.DRIFTING, 
+                successStreak: 0, // 連勝歸零
+                reviewProgress: { spelling: 0, select: 0, reverseSelect: 0, sentence: 0 } 
+            };
+            hasChanges = true;
+        }
+
+        // 規則 3: Drifting 的暫存進度過期清除
+        // 如果這個字在 Drifting 區已經救了一半，但隔了一天沒繼續救 -> 進度歸零
+        if (newItem.status === STATUS.DRIFTING) {
+            const hasProgress = (
+                (newItem.reviewProgress?.select || 0) > 0 || 
+                (newItem.reviewProgress?.spelling || 0) > 0 ||
+                (newItem.reviewProgress?.reverseSelect || 0) > 0 ||
+                (newItem.reviewProgress?.sentence || 0) > 0 
+            );
+            
+            // 使用 lastInteraction 來判斷「上次碰這個字」的時間
+            const lastInteraction = newItem.lastInteraction || now; 
+            
+            if (hasProgress && (now - lastInteraction > ONE_DAY)) {
+                console.log(`Resetting progress for expired word: ${newItem.german}`);
+                newItem = {
+                    ...newItem,
+                    reviewProgress: { spelling: 0, select: 0, reverseSelect: 0, sentence: 0 }, 
+                };
+                hasChanges = true;
+            }
+        }
+        return newItem;
+    });
+
+    if (hasChanges) {
+        console.log("Time decay applied.");
+        setDecks(prev => {
+            const newDecks = {
+                ...prev,
+                [currentDeckId]: { ...currentDeck, words: updatedWords }
+            };
+            // 不在這裡強制 saveToCloud 以免過於頻繁寫入，
+            // 但為了確保資料一致，我們更新本地 state，下次操作時就會一併存入
+            return newDecks;
+        });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDeckId]); // 切換牌組時執行檢查
+
   // 3. Save Function
   const saveToCloud = async (newDecks, activeId) => {
     if (!db || !user) return;
@@ -2729,10 +2814,19 @@ const App = () => {
 
   const handleHardReset = async () => {
     if(confirm("Reset ENTIRE deck to defaults? This cannot be undone.")) {
+        // ⭕️ 抓取當前語言的預設單字，如果沒有就給空陣列或預設值
+        const defaultWords = DEFAULT_VOCAB_SETS[currentDeck.language] || DEFAULT_VOCAB_SETS['German'];
+        
         const resetDeck = {
             ...currentDeck,
-            words: FULL_VOCAB_DATA.map(normalizeVocabItem)
+            // ⭕️ 重新載入正確語言的 15 個預設單字
+            words: defaultWords.map((w, i) => normalizeVocabItem({ 
+                ...w, 
+                id: i + 1,
+                isCustomized: false
+            }))
         };
+        
         setDecks(prev => {
             const next = { ...prev, [currentDeckId]: resetDeck };
             saveToCloud(next, currentDeckId);
