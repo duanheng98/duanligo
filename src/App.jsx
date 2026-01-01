@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { 
   BookOpen, 
   Gamepad2, 
@@ -59,218 +59,151 @@ const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const STORAGE_KEY = 'vocab_multilingua_v1';
 // --- INITIAL DATA: 200 Core B1/B2 Vocabulary Items ---
-const INITIAL_VOCAB_DATA = [
-  // Nouns (Abstract & Society)
-  { id: 1, german: "die Herausforderung", english: "the challenge", example: "Das ist eine große Herausforderung für uns.", gender: "f" },
-  { id: 2, german: "die Erfahrung", english: "the experience", example: "Ich habe viel Erfahrung in diesem Bereich.", gender: "f" },
-  { id: 3, german: "die Verantwortung", english: "the responsibility", example: "Er trägt die volle Verantwortung.", gender: "f" },
-  { id: 4, german: "der Fortschritt", english: "the progress", example: "Wir machen jeden Tag Fortschritte.", gender: "m" },
-  { id: 5, german: "die Gelegenheit", english: "the opportunity", example: "Nutze die Gelegenheit, Deutsch zu sprechen.", gender: "f" },
-  { id: 6, german: "die Umwelt", english: "the environment", example: "Wir müssen die Umwelt schützen.", gender: "f" },
-  { id: 7, german: "die Beziehung", english: "the relationship", example: "Ihre Beziehung ist sehr stark.", gender: "f" },
-  { id: 8, german: "die Gesellschaft", english: "society", example: "Die Probleme der modernen Gesellschaft.", gender: "f" },
-  { id: 9, german: "die Bedingung", english: "the condition", example: "Unter diesen Bedingungen kann ich nicht arbeiten.", gender: "f" },
-  { id: 10, german: "das Ziel", english: "the goal", example: "Mein Ziel ist es, B2 zu erreichen.", gender: "n" },
-  { id: 11, german: "der Eindruck", english: "the impression", example: "Ich habe den Eindruck, dass er lügt.", gender: "m" },
-  { id: 12, german: "die Tatsache", english: "the fact", example: "Es ist eine bekannte Tatsache.", gender: "f" },
-  { id: 13, german: "die Ausnahme", english: "the exception", example: "Das ist die Ausnahme von der Regel.", gender: "f" },
-  { id: 14, german: "die Ursache", english: "the cause", example: "Die Ursache des Problems ist unklar.", gender: "f" },
-  { id: 15, german: "das Bewusstsein", english: "consciousness/awareness", example: "Das Umweltbewusstsein steigt.", gender: "n" },
-  { id: 16, german: "die Maßnahme", english: "the measure", example: "Wir müssen sofort Maßnahmen ergreifen.", gender: "f" },
-  { id: 17, german: "der Zusammenhang", english: "the context/connection", example: "In diesem Zusammenhang ist das wichtig.", gender: "m" },
-  { id: 18, german: "der Einfluss", english: "the influence", example: "Er hat einen schlechten Einfluss auf dich.", gender: "m" },
-  { id: 19, german: "die Entwicklung", english: "the development", example: "Die wirtschaftliche Entwicklung ist positiv.", gender: "f" },
-  { id: 20, german: "die Leistung", english: "the performance", example: "Seine Leistung in der Schule ist gut.", gender: "f" },
-  { id: 21, german: "die Voraussetzung", english: "the prerequisite", example: "Gesundheit ist die Voraussetzung für Glück.", gender: "f" },
-  { id: 22, german: "die Vielfalt", english: "the variety/diversity", example: "Die Vielfalt der Angebote ist groß.", gender: "f" },
-  { id: 23, german: "die Forschung", english: "the research", example: "Die Forschung hat neue Ergebnisse geliefert.", gender: "f" },
-  { id: 24, german: "die Stellungnahme", english: "the statement", example: "Bitte geben Sie eine Stellungnahme ab.", gender: "f" },
-  { id: 25, german: "die Auffassung", english: "the view/opinion", example: "Ich bin der Auffassung, dass das falsch ist.", gender: "f" },
-  { id: 26, german: "die Belastung", english: "the burden/strain", example: "Die Lärmbelastung ist hier sehr hoch.", gender: "f" },
-  { id: 27, german: "die Quelle", english: "the source", example: "Nennen Sie bitte Ihre Quelle.", gender: "f" },
-  { id: 28, german: "die Wirkung", english: "the effect", example: "Die Tabletten haben eine schnelle Wirkung.", gender: "f" },
-  { id: 29, german: "die Fähigkeit", english: "the ability", example: "Sie hat die Fähigkeit, Menschen zu motivieren.", gender: "f" },
-  { id: 30, german: "die Vermutung", english: "the assumption/guess", example: "Das ist nur eine Vermutung.", gender: "f" },
-  { id: 31, german: "der Bereich", english: "the area/field", example: "In welchem Bereich arbeiten Sie?", gender: "m" },
-  { id: 32, german: "die Gestaltung", english: "the design", example: "Die Gestaltung des Raumes gefällt mir.", gender: "f" },
-  { id: 33, german: "der Anspruch", english: "the claim/demand", example: "Sie haben keinen Anspruch auf Ersatz.", gender: "m" },
-  { id: 34, german: "die Grundlage", english: "the basis", example: "Vertrauen ist die Grundlage einer Beziehung.", gender: "f" },
-  { id: 35, german: "die Haltung", english: "the attitude/posture", example: "Seine Haltung zu diesem Thema ist klar.", gender: "f" },
-  { id: 36, german: "die Ebene", english: "the level/plane", example: "Wir müssen auf sachlicher Ebene diskutieren.", gender: "f" },
-  { id: 37, german: "die Auseinandersetzung", english: "the dispute", example: "Er geht jeder Auseinandersetzung aus dem Weg.", gender: "f" },
-  { id: 38, german: "die Bedeutung", english: "the meaning", example: "Dieses Wort hat mehrere Bedeutungen.", gender: "f" },
-  { id: 39, german: "die Folge", english: "the consequence", example: "Das hat schlimme Folgen.", gender: "f" },
-  { id: 40, german: "die Vorstellung", english: "the idea/imagination", example: "Ich habe eine genaue Vorstellung davon.", gender: "f" },
-  { id: 41, german: "die Möglichkeit", english: "the possibility", example: "Es gibt keine andere Möglichkeit.", gender: "f" },
-  { id: 42, german: "der Anteil", english: "the share/proportion", example: "Der Anteil der Kosten ist hoch.", gender: "m" },
-  { id: 43, german: "die Berechtigung", english: "the justification", example: "Das hat seine Berechtigung.", gender: "f" },
-  { id: 44, german: "der Prozess", english: "the process", example: "Der Prozess dauert sehr lange.", gender: "m" },
-  { id: 45, german: "die Annahme", english: "the assumption", example: "Ich gehe von der Annahme aus, dass es stimmt.", gender: "f" },
-  { id: 46, german: "der Verlust", english: "the loss", example: "Der Verlust des Schlüssels ist ärgerlich.", gender: "m" },
-  { id: 47, german: "die Erwartung", english: "the expectation", example: "Er hat meine Erwartungen übertroffen.", gender: "f" },
-  { id: 48, german: "der Wert", english: "the value", example: "Der Wert des Autos ist gesunken.", gender: "m" },
-  { id: 49, german: "die Einstellung", english: "the attitude", example: "Ich muss meine Einstellung ändern.", gender: "f" },
-  { id: 50, german: "die Auswirkung", english: "the impact", example: "Der Klimawandel hat negative Auswirkungen.", gender: "f" },
-  
-  // Verbs (Action & Thinking)
-  { id: 51, german: "abhängen von", english: "to depend on", example: "Es hängt vom Wetter ab.", gender: "v" },
-  { id: 52, german: "sich entscheiden", english: "to decide", example: "Er hat sich für das Studium entschieden.", gender: "v" },
-  { id: 53, german: "überzeugt sein", english: "to be convinced", example: "Ich bin davon überzeugt, dass es klappt.", gender: "v" },
-  { id: 54, german: "teilnehmen an", english: "to participate in", example: "Ich möchte an dem Kurs teilnehmen.", gender: "v" },
-  { id: 55, german: "verursachen", english: "to cause", example: "Der Sturm verursachte große Schäden.", gender: "v" },
-  { id: 56, german: "erwähnen", english: "to mention", example: "Er hat vergessen, das zu erwähnen.", gender: "v" },
-  { id: 57, german: "ausgeben", english: "to spend (money)", example: "Wir haben viel Geld im Urlaub ausgegeben.", gender: "v" },
-  { id: 58, german: "sicherstellen", english: "to ensure", example: "Sie müssen sicherstellen, dass alles funktioniert.", gender: "v" },
-  { id: 59, german: "gelten als", english: "to be considered as", example: "Er gilt als Experte auf seinem Gebiet.", gender: "v" },
-  { id: 60, german: "überlegen", english: "to consider/think", example: "Ich werde es mir überlegen.", gender: "v" },
-  { id: 61, german: "vermeiden", english: "to avoid", example: "Wir sollten Stress vermeiden.", gender: "v" },
-  { id: 62, german: "behaupten", english: "to claim", example: "Er behauptet, er war nicht dort.", gender: "v" },
-  { id: 63, german: "bewältigen", english: "to cope with/manage", example: "Wie bewältigst du den Stress?", gender: "v" },
-  { id: 64, german: "bedeuten", english: "to mean", example: "Was bedeutet dieses Schild?", gender: "v" },
-  { id: 65, german: "herstellen", english: "to produce", example: "Diese Firma stellt Möbel her.", gender: "v" },
-  { id: 66, german: "verbinden", english: "to connect", example: "Können Sie mich mit Herrn Müller verbinden?", gender: "v" },
-  { id: 67, german: "sich widmen", english: "to dedicate oneself", example: "Er widmet sich seiner Familie.", gender: "v" },
-  { id: 68, german: "zurückführen auf", english: "to attribute to", example: "Der Fehler ist auf Stress zurückzuführen.", gender: "v" },
-  { id: 69, german: "feststellen", english: "to determine", example: "Wir müssen den Schaden feststellen.", gender: "v" },
-  { id: 70, german: "entstehen", english: "to arise/develop", example: "Hier soll ein neuer Park entstehen.", gender: "v" },
-  { id: 71, german: "beitragen zu", english: "to contribute to", example: "Wir wollen zum Umweltschutz beitragen.", gender: "v" },
-  { id: 72, german: "erhalten", english: "to receive/maintain", example: "Wir müssen die Natur erhalten.", gender: "v" },
-  { id: 73, german: "verfügen über", english: "to possess/have", example: "Das Haus verfügt über einen großen Garten.", gender: "v" },
-  { id: 74, german: "durchführen", english: "to conduct", example: "Wir führen ein Experiment durch.", gender: "v" },
-  { id: 75, german: "entgegenwirken", english: "to counteract", example: "Wir müssen dem Klimawandel entgegenwirken.", gender: "v" },
-  { id: 76, german: "erwerben", english: "to acquire", example: "Sie hat viele Kenntnisse erworben.", gender: "v" },
-  { id: 77, german: "veröffentlichen", english: "to publish", example: "Der Artikel wurde gestern veröffentlicht.", gender: "v" },
-  { id: 78, german: "enttäuschen", english: "to disappoint", example: "Ich möchte dich nicht enttäuschen.", gender: "v" },
-  { id: 79, german: "verhindern", english: "to prevent", example: "Wir konnten den Unfall verhindern.", gender: "v" },
-  { id: 80, german: "fördern", english: "to promote", example: "Wir müssen Talente frühzeitig fördern.", gender: "v" },
-  { id: 81, german: "scheitern", english: "to fail", example: "Das Projekt ist am Geld gescheitert.", gender: "v" },
-  { id: 82, german: "beeinflussen", english: "to influence", example: "Das Wetter beeinflusst meine Laune.", gender: "v" },
-  { id: 83, german: "nachweisen", english: "to prove", example: "Sie konnte ihre Unschuld nachweisen.", gender: "v" },
-  { id: 84, german: "überfordern", english: "to overwhelm", example: "Diese Aufgabe überfordert mich.", gender: "v" },
-  { id: 85, german: "verhandeln", english: "to negotiate", example: "Wir müssen über den Preis verhandeln.", gender: "v" },
-  { id: 86, german: "vermuten", english: "to suspect", example: "Ich vermute, dass er krank ist.", gender: "v" },
-  { id: 87, german: "beseitigen", english: "to eliminate", example: "Wir müssen die Hindernisse beseitigen.", gender: "v" },
-  { id: 88, german: "sich durchsetzen", english: "to prevail", example: "Die bessere Idee wird sich durchsetzen.", gender: "v" },
-  { id: 89, german: "berücksichtigen", english: "to consider", example: "Man muss alle Faktoren berücksichtigen.", gender: "v" },
-  { id: 90, german: "ermöglichen", english: "to enable", example: "Das Internet ermöglicht schnelle Kommunikation.", gender: "v" },
-  { id: 91, german: "betonen", english: "to emphasize", example: "Er betonte die Wichtigkeit des Projekts.", gender: "v" },
-  { id: 92, german: "genehmigen", english: "to approve", example: "Der Chef hat den Urlaub genehmigt.", gender: "v" },
-  { id: 93, german: "leugnen", english: "to deny", example: "Er leugnete die Tat.", gender: "v" },
-  { id: 94, german: "beurteilen", english: "to judge/assess", example: "Es ist schwer, die Lage zu beurteilen.", gender: "v" },
-  { id: 95, german: "sich ereignen", english: "to occur/happen", example: "Der Unfall ereignete sich gestern.", gender: "v" },
-  { id: 96, german: "verbergen", english: "to hide/conceal", example: "Sie verbarg ihr Gesicht hinter den Händen.", gender: "v" },
-  { id: 97, german: "widersprechen", english: "to contradict", example: "Ich muss Ihnen leider widersprechen.", gender: "v" },
-  { id: 98, german: "überwinden", english: "to overcome", example: "Wir müssen unsere Ängste überwinden.", gender: "v" },
-  { id: 99, german: "pflegen", english: "to maintain/care for", example: "Sie pflegt ihre Kontakte.", gender: "v" },
-  { id: 100, german: "beobachten", english: "to observe", example: "Wir beobachten die Situation genau.", gender: "v" },
 
-  // Adjectives & Adverbs
-  { id: 101, german: "begeistert", english: "enthusiastic", example: "Sie war von der Idee begeistert.", gender: "adj" },
-  { id: 102, german: "nachhaltig", english: "sustainable", example: "Wir müssen nachhaltige Lösungen finden.", gender: "adj" },
-  { id: 103, german: "notwendig", english: "necessary", example: "Es ist notwendig, pünktlich zu sein.", gender: "adj" },
-  { id: 104, german: "ehrlich", english: "honest", example: "Um ehrlich zu sein, weiß ich es nicht.", gender: "adj" },
-  { id: 105, german: "zufrieden", english: "satisfied", example: "Bist du mit dem Ergebnis zufrieden?", gender: "adj" },
-  { id: 106, german: "allerdings", english: "however", example: "Der Film war gut, allerdings etwas zu lang.", gender: "adv" },
-  { id: 107, german: "verfügbar", english: "available", example: "Die Tickets sind ab morgen verfügbar.", gender: "adj" },
-  { id: 108, german: "erforderlich", english: "required", example: "Für diesen Job ist Erfahrung erforderlich.", gender: "adj" },
-  { id: 109, german: "offensichtlich", english: "obvious", example: "Es ist offensichtlich, dass er recht hat.", gender: "adj" },
-  { id: 110, german: "entsprechend", english: "appropriate", example: "Bitte kleiden Sie sich entsprechend.", gender: "adj" },
-  { id: 111, german: "zugleich", english: "at the same time", example: "Das Buch ist spannend und lehrreich zugleich.", gender: "adv" },
-  { id: 112, german: "vorhanden", english: "existing/available", example: "Ist noch Kaffee vorhanden?", gender: "adj" },
-  { id: 113, german: "trotzdem", english: "nevertheless", example: "Es ist teuer, aber ich kaufe es trotzdem.", gender: "adv" },
-  { id: 114, german: "erstaunlich", english: "amazing", example: "Das Ergebnis ist wirklich erstaunlich.", gender: "adj" },
-  { id: 115, german: "einschließlich", english: "including", example: "Der Preis ist einschließlich Versand.", gender: "prep" },
-  { id: 116, german: "vermutlich", english: "probably", example: "Er kommt vermutlich später.", gender: "adv" },
-  { id: 117, german: "zunehmend", english: "increasingly", example: "Es wird zunehmend schwieriger.", gender: "adv" },
-  { id: 118, german: "gleichzeitig", english: "simultaneously", example: "Sie lachte und weinte gleichzeitig.", gender: "adv" },
-  { id: 119, german: "entscheidend", english: "decisive", example: "Der entscheidende Moment war gestern.", gender: "adj" },
-  { id: 120, german: "unabhängig", english: "independent", example: "Sie ist finanziell unabhängig.", gender: "adj" },
-  { id: 121, german: "ausreichend", english: "sufficient", example: "Wir haben ausreichend Essen.", gender: "adj" },
-  { id: 122, german: "leistungsfähig", english: "powerful/efficient", example: "Wir brauchen einen leistungsfähigen Computer.", gender: "adj" },
-  { id: 123, german: "vernünftig", english: "sensible", example: "Das war eine sehr vernünftige Entscheidung.", gender: "adj" },
-  { id: 124, german: "umfassend", english: "comprehensive", example: "Sie hat umfassende Kenntnisse.", gender: "adj" },
-  { id: 125, german: "verzichtbar", english: "dispensable", example: "Luxusgüter sind verzichtbar.", gender: "adj" },
-  { id: 126, german: "effizient", english: "efficient", example: "Wir müssen effizienter arbeiten.", gender: "adj" },
-  { id: 127, german: "zeitgemäß", english: "modern/contemporary", example: "Diese Methoden sind nicht mehr zeitgemäß.", gender: "adj" },
-  { id: 128, german: "grundsätzlich", english: "fundamentally", example: "Ich bin grundsätzlich dafür.", gender: "adv" },
-  { id: 129, german: "geeignet", english: "suitable", example: "Dieser Film ist nicht für Kinder geeignet.", gender: "adj" },
-  { id: 130, german: "relevant", english: "relevant", example: "Diese Information ist sehr relevant.", gender: "adj" },
-  { id: 131, german: "anspruchsvoll", english: "demanding", example: "Der Kunde ist sehr anspruchsvoll.", gender: "adj" },
-  { id: 132, german: "langfristig", english: "long-term", example: "Wir brauchen eine langfristige Lösung.", gender: "adj" },
-  { id: 133, german: "unverzichtbar", english: "indispensable", example: "Wasser ist unverzichtbar.", gender: "adj" },
-  { id: 134, german: "gelegentlich", english: "occasionally", example: "Wir sehen uns gelegentlich.", gender: "adv" },
-  { id: 135, german: "kaum", english: "hardly/barely", example: "Ich kann es kaum glauben.", gender: "adv" },
-  { id: 136, german: "anscheinend", english: "apparently", example: "Anscheinend hat er es vergessen.", gender: "adv" },
-  { id: 137, german: "teilweise", english: "partly", example: "Das stimmt teilweise.", gender: "adv" },
-  { id: 138, german: "lediglich", english: "merely/only", example: "Es war lediglich ein Missverständnis.", gender: "adv" },
-  { id: 139, german: "stets", english: "always/constantly", example: "Er ist stets pünktlich.", gender: "adv" },
-  { id: 140, german: "bislang", english: "so far", example: "Bislang lief alles gut.", gender: "adv" },
-  { id: 141, german: "äußerst", english: "extremely", example: "Das ist äußerst wichtig.", gender: "adv" },
-  { id: 142, german: "ziemlich", english: "quite", example: "Es ist ziemlich kalt heute.", gender: "adv" },
-  { id: 143, german: "durchaus", english: "absolutely/quite", example: "Das ist durchaus möglich.", gender: "adv" },
-  { id: 144, german: "ebenfalls", english: "likewise/also", example: "Schönen Tag! - Danke, ebenfalls.", gender: "adv" },
-  { id: 145, german: "dennoch", english: "nevertheless/yet", example: "Es regnete, dennoch gingen wir spazieren.", gender: "adv" },
-  { id: 146, german: "keineswegs", english: "by no means", example: "Das ist keineswegs sicher.", gender: "adv" },
-  { id: 147, german: "eher", english: "rather/sooner", example: "Ich würde eher Tee trinken.", gender: "adv" },
-  { id: 148, german: "beinahe", english: "almost/nearly", example: "Ich hätte es beinahe vergessen.", gender: "adv" },
-  { id: 149, german: "eventuell", english: "possibly/perhaps", example: "Eventuell komme ich später.", gender: "adv" },
-  { id: 150, german: "übrigens", english: "by the way", example: "Übrigens, hast du schon gehört?", gender: "adv" },
+// --- CONSTANTS: Default Starter Vocabulary (15 words per language) ---
+// --- CONSTANTS: Default Starter Vocabulary (15 words per language) ---
+// Focused on the 8 supported languages
+const DEFAULT_VOCAB_SETS = {
+  'German': [
+    { german: "Hallo", english: "Hello", gender: "phr", example: "Hallo, wie geht es dir?" },
+    { german: "Danke", english: "Thank you", gender: "phr", example: "Vielen Dank!" },
+    { german: "Ja", english: "Yes", gender: "adv", example: "Ja, bitte." },
+    { german: "Nein", english: "No", gender: "adv", example: "Nein, danke." },
+    { german: "Wasser", english: "Water", gender: "n", example: "Ein Glas Wasser, bitte." },
+    { german: "Brot", english: "Bread", gender: "n", example: "Das Brot ist frisch." },
+    { german: "Mann", english: "Man", gender: "n", example: "Der Mann ist groß." },
+    { german: "Frau", english: "Woman", gender: "n", example: "Die Frau liest." },
+    { german: "Liebe", english: "Love", gender: "n", example: "Liebe ist wichtig." },
+    { german: "Haus", english: "House", gender: "n", example: "Das Haus ist alt." },
+    { german: "Katze", english: "Cat", gender: "n", example: "Die Katze schläft." },
+    { german: "Hund", english: "Dog", gender: "n", example: "Der Hund bellt." },
+    { german: "essen", english: "to eat", gender: "v", example: "Wir essen Pizza." },
+    { german: "trinken", english: "to drink", gender: "v", example: "Ich trinke Kaffee." },
+    { german: "glücklich", english: "happy", gender: "adj", example: "Ich bin glücklich." }
+  ],
+  'Spanish': [
+    { german: "Hola", english: "Hello", gender: "phr", example: "¡Hola! ¿Qué tal?" },
+    { german: "Gracias", english: "Thank you", gender: "phr", example: "Muchas gracias." },
+    { german: "Sí", english: "Yes", gender: "adv", example: "Sí, por favor." },
+    { german: "No", english: "No", gender: "adv", example: "No, gracias." },
+    { german: "Agua", english: "Water", gender: "n", example: "Agua, por favor." },
+    { german: "Pan", english: "Bread", gender: "n", example: "El pan está fresco." },
+    { german: "Hombre", english: "Man", gender: "n", example: "El hombre es alto." },
+    { german: "Mujer", english: "Woman", gender: "n", example: "La mujer lee." },
+    { german: "Amor", english: "Love", gender: "n", example: "El amor es ciego." },
+    { german: "Casa", english: "House", gender: "n", example: "Mi casa es tu casa." },
+    { german: "Gato", english: "Cat", gender: "n", example: "El gato negro." },
+    { german: "Perro", english: "Dog", gender: "n", example: "El perro ladra." },
+    { german: "Comer", english: "to eat", gender: "v", example: "Me gusta comer." },
+    { german: "Beber", english: "to drink", gender: "v", example: "Quiero beber agua." },
+    { german: "Feliz", english: "Happy", gender: "adj", example: "Soy muy feliz." }
+  ],
+  'Italian': [
+    { german: "Ciao", english: "Hello", gender: "phr", example: "Ciao! Come stai?" },
+    { german: "Grazie", english: "Thank you", gender: "phr", example: "Grazie mille." },
+    { german: "Sì", english: "Yes", gender: "adv", example: "Sì, per favore." },
+    { german: "No", english: "No", gender: "adv", example: "No, grazie." },
+    { german: "Acqua", english: "Water", gender: "n", example: "Acqua, per favore." },
+    { german: "Pane", english: "Bread", gender: "n", example: "Il pane è buono." },
+    { german: "Uomo", english: "Man", gender: "n", example: "L'uomo cammina." },
+    { german: "Donna", english: "Woman", gender: "n", example: "La donna canta." },
+    { german: "Amore", english: "Love", gender: "n", example: "L'amore è tutto." },
+    { german: "Casa", english: "House", gender: "n", example: "Vado a casa." },
+    { german: "Gatto", english: "Cat", gender: "n", example: "Il gatto dorme." },
+    { german: "Cane", english: "Dog", gender: "n", example: "Il cane gioca." },
+    { german: "Mangiare", english: "to eat", gender: "v", example: "Voglio mangiare." },
+    { german: "Bere", english: "to drink", gender: "v", example: "Posso bere?" },
+    { german: "Felice", english: "Happy", gender: "adj", example: "Sono felice." }
+  ],
+  'French': [
+    { german: "Bonjour", english: "Hello", gender: "phr", example: "Bonjour tout le monde." },
+    { german: "Merci", english: "Thank you", gender: "phr", example: "Merci beaucoup." },
+    { german: "Oui", english: "Yes", gender: "adv", example: "Oui, bien sûr." },
+    { german: "Non", english: "No", gender: "adv", example: "Non, désolé." },
+    { german: "Eau", english: "Water", gender: "n", example: "De l'eau, s'il vous plaît." },
+    { german: "Pain", english: "Bread", gender: "n", example: "Du pain frais." },
+    { german: "Homme", english: "Man", gender: "n", example: "L'homme est gentil." },
+    { german: "Femme", english: "Woman", gender: "n", example: "La femme travaille." },
+    { german: "Amour", english: "Love", gender: "n", example: "C'est mon amour." },
+    { german: "Maison", english: "House", gender: "n", example: "Belle maison." },
+    { german: "Chat", english: "Cat", gender: "n", example: "Le chat noir." },
+    { german: "Chien", english: "Dog", gender: "n", example: "Mon chien." },
+    { german: "Manger", english: "to eat", gender: "v", example: "J'aime manger." },
+    { german: "Boire", english: "to drink", gender: "v", example: "Il faut boire." },
+    { german: "Heureux", english: "Happy", gender: "adj", example: "Je suis heureux." }
+  ],
+  'Dutch': [
+    { german: "Hallo", english: "Hello", gender: "phr", example: "Hallo allemaal." },
+    { german: "Dank je", english: "Thank you", gender: "phr", example: "Dank je wel." },
+    { german: "Ja", english: "Yes", gender: "adv", example: "Ja, graag." },
+    { german: "Nee", english: "No", gender: "adv", example: "Nee, bedankt." },
+    { german: "Water", english: "Water", gender: "n", example: "Mag ik wat water?" },
+    { german: "Brood", english: "Bread", gender: "n", example: "Lekker brood." },
+    { german: "Man", english: "Man", gender: "n", example: "De man loopt." },
+    { german: "Vrouw", english: "Woman", gender: "n", example: "De vrouw lacht." },
+    { german: "Liefde", english: "Love", gender: "n", example: "Liefde is mooi." },
+    { german: "Huis", english: "House", gender: "n", example: "Ons huis." },
+    { german: "Kat", english: "Cat", gender: "n", example: "De kat miauwt." },
+    { german: "Hond", english: "Dog", gender: "n", example: "De hond blaft." },
+    { german: "Eten", english: "to eat", gender: "v", example: "Wij eten samen." },
+    { german: "Drinken", english: "to drink", gender: "v", example: "Wat wil je drinken?" },
+    { german: "Gelukkig", english: "Happy", gender: "adj", example: "Ik ben gelukkig." }
+  ],
+  'Russian': [
+    { german: "Привет", english: "Hello", gender: "phr", example: "Привет! Как дела?" },
+    { german: "Спасибо", english: "Thank you", gender: "phr", example: "Большое спасибо." },
+    { german: "Да", english: "Yes", gender: "adv", example: "Да, пожалуйста." },
+    { german: "Нет", english: "No", gender: "adv", example: "Нет, спасибо." },
+    { german: "Вода", english: "Water", gender: "n", example: "Можно мне воды?" },
+    { german: "Хлеб", english: "Bread", gender: "n", example: "Свежий хлеб." },
+    { german: "Мужчина", english: "Man", gender: "n", example: "Этот мужчина." },
+    { german: "Женщина", english: "Woman", gender: "n", example: "Эта женщина." },
+    { german: "Любовь", english: "Love", gender: "n", example: "Любовь важна." },
+    { german: "Дом", english: "House", gender: "n", example: "Мой дом." },
+    { german: "Кот", english: "Cat", gender: "n", example: "Кот спит." },
+    { german: "Собака", english: "Dog", gender: "n", example: "Собака лает." },
+    { german: "Есть", english: "to eat", gender: "v", example: "Я хочу есть." },
+    { german: "Пить", english: "to drink", gender: "v", example: "Я хочу пить." },
+    { german: "Счастливый", english: "Happy", gender: "adj", example: "Я счастливый." }
+  ],
+  'Polish': [
+    { german: "Cześć", english: "Hello", gender: "phr", example: "Cześć! Jak się masz?" },
+    { german: "Dziękuję", english: "Thank you", gender: "phr", example: "Dziękuję bardzo." },
+    { german: "Tak", english: "Yes", gender: "adv", example: "Tak, poproszę." },
+    { german: "Nie", english: "No", gender: "adv", example: "Nie, dziękuję." },
+    { german: "Woda", english: "Water", gender: "n", example: "Poproszę wodę." },
+    { german: "Chleb", english: "Bread", gender: "n", example: "Świeży chleb." },
+    { german: "Mężczyzna", english: "Man", gender: "n", example: "To jest mężczyzna." },
+    { german: "Kobieta", english: "Woman", gender: "n", example: "To jest kobieta." },
+    { german: "Miłość", english: "Love", gender: "n", example: "Miłość jest ważna." },
+    { german: "Dom", english: "House", gender: "n", example: "Duży dom." },
+    { german: "Kot", english: "Cat", gender: "n", example: "Kot śpi." },
+    { german: "Pies", english: "Dog", gender: "n", example: "Pies szczeka." },
+    { german: "Jeść", english: "to eat", gender: "v", example: "Lubię jeść." },
+    { german: "Pić", english: "to drink", gender: "v", example: "Chcę pić." },
+    { german: "Szczęśliwy", english: "Happy", gender: "adj", example: "Jestem szczęśliwy." }
+  ],
+  'Czech': [
+    { german: "Ahoj", english: "Hello", gender: "phr", example: "Ahoj! Jak se máš?" },
+    { german: "Děkuji", english: "Thank you", gender: "phr", example: "Děkuji moc." },
+    { german: "Ano", english: "Yes", gender: "adv", example: "Ano, prosím." },
+    { german: "Ne", english: "No", gender: "adv", example: "Ne, děkuji." },
+    { german: "Voda", english: "Water", gender: "n", example: "Vodu, prosím." },
+    { german: "Chléb", english: "Bread", gender: "n", example: "Čerstvý chléb." },
+    { german: "Muž", english: "Man", gender: "n", example: "Ten muž je vysoký." },
+    { german: "Žena", english: "Woman", gender: "n", example: "Ta žena čte." },
+    { german: "Láska", english: "Love", gender: "n", example: "Láska je krásná." },
+    { german: "Dům", english: "House", gender: "n", example: "Náš dům." },
+    { german: "Kočka", english: "Cat", gender: "n", example: "Kočka spí." },
+    { german: "Pes", english: "Dog", gender: "n", example: "Pes štěká." },
+    { german: "Jíst", english: "to eat", gender: "v", example: "Jíme oběd." },
+    { german: "Pít", english: "to drink", gender: "v", example: "Piju kávu." },
+    { german: "Šťastný", english: "Happy", gender: "adj", example: "Jsem šťastný." }
+  ]
+};
 
-  // More Nouns
-  { id: 151, german: "der Wettbewerb", english: "the competition", example: "Der Wettbewerb ist hart.", gender: "m" },
-  { id: 152, german: "die Genehmigung", english: "the approval", example: "Wir warten auf die Genehmigung.", gender: "f" },
-  { id: 153, german: "der Schwerpunkt", english: "the focus", example: "Der Schwerpunkt liegt auf der Sprache.", gender: "m" },
-  { id: 154, german: "das Bedürfnis", english: "the need", example: "Es ist ein Grundbedürfnis.", gender: "n" },
-  { id: 155, german: "die Mangelware", english: "scarce goods", example: "Gute Mitarbeiter sind Mangelware.", gender: "f" },
-  { id: 156, german: "die Herkunft", english: "the origin", example: "Seine Herkunft ist unbekannt.", gender: "f" },
-  { id: 157, german: "der Umsatz", english: "the revenue", example: "Der Umsatz ist gestiegen.", gender: "m" },
-  { id: 158, german: "die Umsetzung", english: "the implementation", example: "Die Umsetzung war schwierig.", gender: "f" },
-  { id: 159, german: "das Engagement", english: "the commitment", example: "Danke für dein Engagement.", gender: "n" },
-  { id: 160, german: "die Einschränkung", english: "the restriction", example: "Es gibt keine Einschränkungen.", gender: "f" },
-  { id: 161, german: "der Bestandteil", english: "the component", example: "Das ist ein fester Bestandteil.", gender: "m" },
-  { id: 162, german: "die Sichtweise", english: "the viewpoint", example: "Das ist eine interessante Sichtweise.", gender: "f" },
-  { id: 163, german: "die Erwartungshaltung", english: "the expectation attitude", example: "Die Erwartungshaltung ist zu hoch.", gender: "f" },
-  { id: 164, german: "das Hindernis", english: "the obstacle", example: "Ein großes Hindernis steht im Weg.", gender: "n" },
-  { id: 165, german: "die Anforderung", english: "the requirement", example: "Die Anforderungen sind gestiegen.", gender: "f" },
-  { id: 166, german: "die Kompetenz", english: "the competence", example: "Er hat hohe soziale Kompetenz.", gender: "f" },
-  { id: 167, german: "der Wandel", english: "the change", example: "Der Wandel der Zeit.", gender: "m" },
-  { id: 168, german: "der Zweifel", english: "the doubt", example: "Ich habe keine Zweifel.", gender: "m" },
-  { id: 169, german: "die Absicht", english: "the intention", example: "Das war nicht meine Absicht.", gender: "f" },
-  { id: 170, german: "der Zugriff", english: "the access", example: "Ich habe keinen Zugriff auf die Daten.", gender: "m" },
-  { id: 171, german: "die Gelegenheit nutzen", english: "to seize the opportunity", example: "Er nutzte die Gelegenheit sofort.", gender: "phrase" },
-  { id: 172, german: "der Umgang", english: "the handling/contact", example: "Der Umgang mit schwierigen Kunden.", gender: "m" },
-  { id: 173, german: "die Anleitung", english: "the instruction", example: "Lies die Anleitung genau.", gender: "f" },
-  { id: 174, german: "der Begriff", english: "the term/concept", example: "Dieser Begriff ist mir neu.", gender: "m" },
-  { id: 175, german: "die Datei", english: "the file (digital)", example: "Speichern Sie die Datei ab.", gender: "f" },
-  { id: 176, german: "die Frist", english: "the deadline", example: "Die Frist endet morgen.", gender: "f" },
-  { id: 177, german: "die Gebühr", english: "the fee", example: "Die Gebühr beträgt 10 Euro.", gender: "f" },
-  { id: 178, german: "der Geschmack", english: "the taste", example: "Über Geschmack lässt sich streiten.", gender: "m" },
-  { id: 179, german: "die Gewohnheit", english: "the habit", example: "Alte Gewohnheiten legt man schwer ab.", gender: "f" },
-  { id: 180, german: "die Hürde", english: "the hurdle", example: "Wir müssen noch einige Hürden nehmen.", gender: "f" },
-  { id: 181, german: "der Inhalt", english: "the content", example: "Der Inhalt des Buches ist komplex.", gender: "m" },
-  { id: 182, german: "die Kraft", english: "the strength/power", example: "Mir fehlt die Kraft dazu.", gender: "f" },
-  { id: 183, german: "die Kritik", english: "the criticism", example: "Er kann keine Kritik vertragen.", gender: "f" },
-  { id: 184, german: "die Lage", english: "the situation/location", example: "Die Lage ist ernst.", gender: "f" },
-  { id: 185, german: "der Mangel", english: "the lack/defect", example: "Es herrscht ein Mangel an Ärzten.", gender: "m" },
-  { id: 186, german: "die Menge", english: "the quantity/crowd", example: "Eine große Menge Menschen.", gender: "f" },
-  { id: 187, german: "die Methode", english: "the method", example: "Wir brauchen eine neue Methode.", gender: "f" },
-  { id: 188, german: "das Motiv", english: "the motive/motif", example: "Das Motiv des Täters ist unklar.", gender: "n" },
-  { id: 189, german: "die Nachricht", english: "the news/message", example: "Ich habe eine gute Nachricht.", gender: "f" },
-  { id: 190, german: "die Phase", english: "the phase", example: "Das ist nur eine Phase.", gender: "f" },
-  { id: 191, german: "das Prinzip", english: "the principle", example: "Aus Prinzip mache ich das nicht.", gender: "n" },
-  { id: 192, german: "die Reaktion", english: "the reaction", example: "Seine Reaktion war überraschend.", gender: "f" },
-  { id: 193, german: "die Regel", english: "the rule", example: "Halten Sie sich an die Regeln.", gender: "f" },
-  { id: 194, german: "die Rolle", english: "the role", example: "Geld spielt keine Rolle.", gender: "f" },
-  { id: 195, german: "die Schwierigkeit", english: "the difficulty", example: "Wir hatten einige Schwierigkeiten.", gender: "f" },
-  { id: 196, german: "die Sicherheit", english: "the safety/security", example: "Sicherheit geht vor.", gender: "f" },
-  { id: 197, german: "der Standpunkt", english: "the point of view", example: "Vertreten Sie Ihren Standpunkt.", gender: "m" },
-  { id: 198, german: "die Struktur", english: "the structure", example: "Die Struktur der Firma wird geändert.", gender: "f" },
-  { id: 199, german: "das System", english: "the system", example: "Das System ist abgestürzt.", gender: "n" },
-  { id: 200, german: "der Überblick", english: "the overview", example: "Ich habe den Überblick verloren.", gender: "m" }
-];
-
-const FULL_VOCAB_DATA = INITIAL_VOCAB_DATA;
 
 // --- TYPES & CONSTANTS ---
 const STATUS = {
@@ -301,12 +234,12 @@ const SESSION_APPEARANCE_LIMIT = 5;
 // --- UTILS ---
 const shuffleArray = (array) => [...array].sort(() => Math.random() - 0.5);
 
-const speak = (text) => {
+const speak = (text, langCode = 'de-DE') => {
   if (!text) return;
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'de-DE';
+    utterance.lang = langCode; // 使用傳入的語言代碼
     utterance.rate = 0.9;
     window.speechSynthesis.speak(utterance);
   }
@@ -329,7 +262,7 @@ const normalizeVocabItem = (item) => ({
   status: item.status ?? STATUS.NEW,
   familiarity: item.familiarity || 0,
   learningProgress: item.learningProgress || { sentence: 0, select: 0, listening: 0, spelling: 0 },
-  reviewProgress: item.reviewProgress || { spelling: 0, select: 0, reverseSelect: 0 },
+  reviewProgress: item.reviewProgress || { spelling: 0, select: 0, reverseSelect: 0, sentence: 0 },
   hellProgress: item.hellProgress || { spelling: 0, listening: 0 },
   reviewDates: item.reviewDates || [], 
   isNigate: item.isNigate || false,
@@ -342,7 +275,7 @@ const normalizeVocabItem = (item) => ({
 
 // --- SUB-COMPONENTS (Session Games) ---
 
-const StudyCardPreview = ({ card, onReady }) => {
+const StudyCardPreview = ({ card, onReady, langCode }) => {
     return (
         <div className="flex flex-col items-center justify-center h-full w-full p-6 animate-in fade-in zoom-in duration-300">
             <div className="text-center max-w-sm w-full bg-white p-8 rounded-2xl shadow-xl border-2 border-indigo-100">
@@ -352,7 +285,7 @@ const StudyCardPreview = ({ card, onReady }) => {
                 <h2 className="text-4xl font-bold text-slate-800 mb-2">{card.german}</h2>
                 <div className="flex justify-center gap-2 mb-6">
                     <span className="text-sm text-slate-500 italic">{card.gender === 'm' ? 'der' : card.gender === 'f' ? 'die' : card.gender === 'n' ? 'das' : card.gender}</span>
-                    <button onClick={() => speak(card.german)} className="text-indigo-500 hover:text-indigo-700"><Volume2 className="w-5 h-5"/></button>
+                    <button onClick={() => speak(card.german, langCode)} className="text-indigo-500 hover:text-indigo-700"><Volume2 className="w-5 h-5"/></button>
                 </div>
                 <div className="w-full h-px bg-slate-100 my-4"></div>
                 <h3 className="text-2xl font-medium text-slate-600 mb-6">{card.english}</h3>
@@ -662,7 +595,7 @@ const SpellingGame = ({ card, onAnswer, feedbackState }) => {
 };
 
 // --- CORE SESSION CONTROLLER ---
-const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
+const SessionController = ({ vocabList, mode, onComplete, onUpdateItem, langCode }) => {
   const [activePool, setActivePool] = useState([]);
   const [sessionStats, setSessionStats] = useState({});
   const [isFinished, setIsFinished] = useState(false);
@@ -761,11 +694,13 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
     if (mode === 'review') {
         const p = card.reviewProgress;
         const revCount = p.reverseSelect || 0; 
+        const sentCount = p.sentence || 0;
       
         let tasks = [];
         if (p.select < 2) tasks.push('select');
         if (p.spelling < 2) tasks.push('spelling');
         if (revCount < 2) tasks.push('reverseSelect');
+        if (sentCount < 1) tasks.push('sentence');
 
         if (tasks.length > 0) return tasks[Math.floor(Math.random() * tasks.length)];
         return null;
@@ -793,7 +728,8 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
       if (mode === 'review') {
           return card.reviewProgress.select >= 2 && 
           card.reviewProgress.spelling >= 2 && 
-          (card.reviewProgress.reverseSelect || 0) >= 2;
+          (card.reviewProgress.reverseSelect || 0) >= 2 &&
+          (card.reviewProgress.sentence || 0) >= 1;
       }
       return false;
   };
@@ -883,6 +819,9 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
                    if (activeTask === 'reverseSelect') {
                     updatedCard.reviewProgress.reverseSelect = (updatedCard.reviewProgress.reverseSelect || 0) + 1;
                 }
+                   if (activeTask === 'sentence') {
+                  updatedCard.reviewProgress.sentence = (updatedCard.reviewProgress.sentence || 0) + 1;
+             }
                }
             } else {
                 updatedCard.cumulativeFailures = (updatedCard.cumulativeFailures || 0) + 1;
@@ -1022,11 +961,11 @@ const SessionController = ({ vocabList, mode, onComplete, onUpdateItem }) => {
   }
 
   if (showPreview) {
-      return <StudyCardPreview card={currentCard} onReady={handlePreviewDone} />;
+      return <StudyCardPreview card={currentCard} onReady={handlePreviewDone} langCode={langCode} />;
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-100 max-w-2xl mx-auto shadow-2xl relative">
+    <div className="flex flex-col h-full bg-slate-100 relative">
        <div className="bg-white p-4 flex justify-between items-center shadow-sm z-10">
           <button onClick={onComplete} className="text-slate-400 hover:text-slate-600"><XCircle className="w-6 h-6"/></button>
           <div className="flex items-center gap-2">
@@ -1756,7 +1695,7 @@ const ArcadeContainer = ({ gameType, vocabList, onBack, onUpdateItem }) => {
 };
 
 // --- VOCAB BROWSER ---
-const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem, initialFilter = 'all' }) => {
+const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem, initialFilter = 'all', currentLanguage, langCode }) => { // Added currentLanguage
   const [filter, setFilter] = useState(initialFilter);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -1764,6 +1703,9 @@ const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem
   const [isAdding, setIsAdding] = useState(false);
   const [newWord, setNewWord] = useState({ german: '', english: '', gender: 'm', example: '' });
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  // Use the passed language or default to German
+  const targetLangLabel = currentLanguage || "German";
 
   const filtered = vocabList.filter(item => {
       if (item.isDeleted) return false; 
@@ -1808,7 +1750,7 @@ const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input 
                     className="w-full pl-9 pr-4 py-2 bg-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" 
-                    placeholder="Search vocabulary..." 
+                    placeholder={`Search ${targetLangLabel} vocabulary...`}
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
                 />
@@ -1828,17 +1770,18 @@ const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem
             {isAdding && (
                 <div className="bg-white p-4 rounded-xl shadow-md border-2 border-indigo-500 mb-4 animate-in fade-in zoom-in">
                     <div className="flex gap-2 mb-2">
-                        <input className="flex-1 p-2 border rounded font-bold" placeholder="German" value={newWord.german} onChange={e => setNewWord({...newWord, german: e.target.value})} />
+                        {/* UPDATE: Uses dynamic placeholder */}
+                        <input className="flex-1 p-2 border rounded font-bold" placeholder={targetLangLabel} value={newWord.german} onChange={e => setNewWord({...newWord, german: e.target.value})} />
                         <select className="p-2 border rounded" value={newWord.gender} onChange={e => setNewWord({...newWord, gender: e.target.value})}>
-                            <option value="m">m</option>
-                            <option value="f">f</option>
-                            <option value="n">n</option>
-                            <option value="v">v</option>
-                            <option value="adj">adj</option>
-                            <option value="adv">adv</option>
+                          <option value="n">Noun (n)</option>
+                          <option value="v">Verb (v)</option>
+                          <option value="adj">Adjective (adj)</option>
+                          <option value="adv">Adverb (adv)</option>
+                          <option value="phr">Phrase (phr)</option>
+                          <option value="other">Other</option>
                         </select>
                     </div>
-                    <input className="w-full p-2 border rounded mb-2" placeholder="English" value={newWord.english} onChange={e => setNewWord({...newWord, english: e.target.value})} />
+                    <input className="w-full p-2 border rounded mb-2" placeholder="English / Native" value={newWord.english} onChange={e => setNewWord({...newWord, english: e.target.value})} />
                     <input className="w-full p-2 border rounded mb-2" placeholder="Example Sentence" value={newWord.example} onChange={e => setNewWord({...newWord, example: e.target.value})} />
                     <div className="flex gap-2">
                         <button onClick={saveNew} className="flex-1 bg-green-500 text-white p-2 rounded font-bold">Save</button>
@@ -1854,12 +1797,12 @@ const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem
                                 <div className="flex gap-2">
                                     <input className="flex-1 font-bold border-b" value={editForm.german} onChange={e => setEditForm({...editForm, german: e.target.value})}/>
                                     <select className="border-b bg-white" value={editForm.gender} onChange={e => setEditForm({...editForm, gender: e.target.value})}>
-                                        <option value="m">m</option>
-                                        <option value="f">f</option>
-                                        <option value="n">n</option>
-                                        <option value="v">v</option>
-                                        <option value="adj">adj</option>
-                                        <option value="adv">adv</option>
+                                      <option value="n">Noun (n)</option>
+                                      <option value="v">Verb (v)</option>
+                                      <option value="adj">Adjective (adj)</option>
+                                      <option value="adv">Adverb (adv)</option>
+                                      <option value="phr">Phrase (phr)</option>
+                                      <option value="other">Other</option>
                                     </select>
                                 </div>
                                 <input className="w-full border-b" value={editForm.english} onChange={e => setEditForm({...editForm, english: e.target.value})}/>
@@ -1905,7 +1848,8 @@ const VocabBrowser = ({ onBack, vocabList, onUpdateItem, onAddItem, onDeleteItem
 
 // --- DASHBOARD (Strictly Defined Before App) ---
 // --- DASHBOARD (修改版：加入 Google 登入) ---
-const Dashboard = ({ vocabList, onStartMode, resetProgress, onOpenVocab, user }) => { // 注意這裡多收了 user
+const Dashboard = ({ vocabList, onStartMode, resetProgress, onOpenVocab, user, currentLanguage, onSwitchDeck, onLogin, onLogout }) => {
+  // 計算統計數據
   const stats = {
       new: vocabList.filter(i => i.status === STATUS.NEW && !i.isDeleted).length,
       learning: vocabList.filter(i => i.status === STATUS.LEARNING && !i.isDeleted).length,
@@ -1915,60 +1859,56 @@ const Dashboard = ({ vocabList, onStartMode, resetProgress, onOpenVocab, user })
       nigate: vocabList.filter(i => i.isNigate && !i.isDeleted).length
   };
 
-  const handleGoogleLogin = async () => {
-      const auth = getAuth();
-      const provider = new GoogleAuthProvider();
-      try {
-          // 這會跳出 Google 登入視窗
-          await signInWithPopup(auth, provider);
-          // 登入成功後，React 會自動偵測到 user 改變，並重新載入雲端進度
-      } catch (error) {
-          console.error("Login failed", error);
-          alert("Login failed: " + error.message);
-      }
-  };
+  
 
-  const handleLogout = () => {
-      const auth = getAuth();
-      signOut(auth).then(() => {
-           // 登出後重新載入頁面，回到匿名狀態
-           window.location.reload();
-      });
-  };
+  // 取得目前語言的旗幟
+  const currentFlag = SUPPORTED_LANGUAGES.find(l => l.code === currentLanguage)?.flag || '🇩🇪';
 
   return (
       <div className="flex flex-col h-full bg-slate-50">
-          <div className="bg-indigo-700 p-8 pb-12 rounded-b-[2.5rem] shadow-xl text-white relative overflow-hidden">
+          <div className="bg-indigo-700 p-6 pb-12 rounded-b-[2.5rem] shadow-xl text-white relative overflow-hidden">
               <div className="absolute top-0 right-0 p-4 opacity-10"><Languages className="w-32 h-32" /></div>
               
-              {/* 頂部導覽列：加入登入/登出按鈕 */}
+              {/* Header Navigation */}
               <div className="flex justify-between items-start relative z-10 mb-6">
-                  <div>
-                      <h1 className="text-3xl font-extrabold mb-2 tracking-tight">Duanlingo</h1>
-                      <p className="text-indigo-200 text-sm">Ultimate Edition</p>
+                  <div className="flex items-center gap-3">
+                      {/* Switch Deck Button */}
+                      <button 
+                        onClick={onSwitchDeck}
+                        className="bg-indigo-600/50 hover:bg-indigo-600 backdrop-blur-sm p-2 rounded-xl border border-indigo-500/50 transition-all flex flex-col items-center justify-center min-w-[50px]"
+                      >
+                         <span className="text-2xl leading-none mb-1">{currentFlag}</span>
+                         <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-200">Switch</span>
+                      </button>
+                      
+                      <div>
+                          <h1 className="text-2xl font-extrabold tracking-tight">Duanlingo</h1>
+                          <p className="text-indigo-200 text-sm font-medium opacity-80">
+                            {currentLanguage || 'German'}
+                          </p>
+                      </div>
                   </div>
+
+                  {/* User Profile / Login */}
                   <div>
                       {user && !user.isAnonymous ? (
-                          <div className="flex items-center gap-2">
+                          <button onClick={onLogout} className="group relative">
                               <img 
-                                src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${user.uid}`}
-                                alt="User Avatar"
+                                src={user.photoURL || `https://api.dicebear.com/9.x/adventurer/svg?seed=${user.uid}`}
+                                alt="User"
                                 className="w-10 h-10 rounded-full border-2 border-white shadow-sm bg-indigo-100" 
                               />
-                              <button onClick={handleLogout} className="bg-indigo-800 hover:bg-indigo-900 text-xs px-3 py-1.5 rounded-full font-bold transition-colors">
-                                  Sign Out
-                              </button>
-                          </div>
+                          </button>
                       ) : (
-                          <button onClick={handleGoogleLogin} className="bg-white text-indigo-700 hover:bg-indigo-50 text-xs px-4 py-2 rounded-full font-bold shadow-md transition-colors flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-                              Login to Save
+                          <button onClick={onLogin} className="bg-white text-indigo-700 hover:bg-indigo-50 text-xs px-4 py-2 rounded-full font-bold shadow-md transition-colors flex items-center gap-2">
+                              Login
                           </button>
                       )}
                   </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-3 gap-2 relative z-10">
+              {/* Stats Grid */}
+              <div className="mt-2 grid grid-cols-3 gap-2 relative z-10">
                   <button onClick={() => onOpenVocab(`status-${STATUS.NEW}`)} className="bg-white/10 backdrop-blur-md p-2 rounded-xl text-center hover:bg-white/20 transition-colors"><div className="flex justify-center mb-1 text-indigo-200"><CircleDashed className="w-4 h-4"/></div><span className="block text-xl font-bold">{stats.new}</span><span className="text-[10px] uppercase tracking-wider opacity-70">New</span></button>
                   <button onClick={() => onOpenVocab(`status-${STATUS.LEARNING}`)} className="bg-white/10 backdrop-blur-md p-2 rounded-xl text-center border border-indigo-400 hover:bg-white/20 transition-colors"><div className="flex justify-center mb-1 text-white"><BookOpen className="w-4 h-4"/></div><span className="block text-xl font-bold">{stats.learning}</span><span className="text-[10px] uppercase tracking-wider opacity-70">Learning</span></button>
                   <button onClick={() => onOpenVocab(`status-${STATUS.REVIEW}`)} className="bg-white/10 backdrop-blur-md p-2 rounded-xl text-center hover:bg-white/20 transition-colors"><div className="flex justify-center mb-1 text-green-300"><CheckCircle className="w-4 h-4"/></div><span className="block text-xl font-bold">{stats.review}</span><span className="text-[10px] uppercase tracking-wider opacity-70">Short Term</span></button>
@@ -1978,6 +1918,7 @@ const Dashboard = ({ vocabList, onStartMode, resetProgress, onOpenVocab, user })
               </div>
           </div>
           
+          {/* Main Action Buttons */}
           <div className="flex-1 p-6 -mt-4 overflow-y-auto space-y-4">
               <div className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Core Path</div>
               <button onClick={() => onStartMode('learning')} disabled={stats.new + stats.learning === 0} className="w-full bg-white p-5 rounded-2xl shadow-sm hover:shadow-md transition-all border border-slate-100 flex items-center gap-4 disabled:opacity-50">
@@ -1990,7 +1931,9 @@ const Dashboard = ({ vocabList, onStartMode, resetProgress, onOpenVocab, user })
                   <div className="text-left flex-1"><h3 className="font-bold text-slate-800">Review Mode</h3><p className="text-slate-500 text-xs">Recover drifting words</p></div>
                   <ArrowRight className="text-slate-300 w-5 h-5" />
               </button>
-              {stats.nigate > 0 && (
+              
+              {/* (其餘 Arcade Buttons 維持不變，篇幅關係這邊省略，請保留原有的按鈕程式碼) */}
+               {stats.nigate > 0 && (
                   <button onClick={() => onStartMode('hell')} className="w-full bg-gradient-to-r from-red-50 to-red-100 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all border border-red-200 flex items-center gap-4">
                       <div className="w-10 h-10 rounded-full bg-red-200 flex items-center justify-center"><Flame className="w-6 h-6 text-red-600 animate-pulse" /></div>
                       <div className="text-left flex-1"><h3 className="font-bold text-red-800">Hell Training</h3><p className="text-red-600 text-xs">Clear NIGATE status</p></div>
@@ -2028,19 +1971,7 @@ const Dashboard = ({ vocabList, onStartMode, resetProgress, onOpenVocab, user })
                       <span className="font-bold text-slate-700 text-sm">Vocabulary Manager</span>
                   </button>
               </div>
-              
-              {/* 顯示目前登入狀態提示 */}
-              <div className="text-center mt-4">
-                   {user && !user.isAnonymous ? (
-                      <p className="text-xs text-green-600 font-bold bg-green-50 inline-block px-3 py-1 rounded-full border border-green-200">
-                         Cloud Sync Active • {user.email}
-                      </p>
-                   ) : (
-                      <p className="text-xs text-slate-400 italic">
-                         Login to save your progress permanently
-                      </p>
-                   )}
-              </div>
+
           </div>
       </div>
   );
@@ -2048,23 +1979,304 @@ const Dashboard = ({ vocabList, onStartMode, resetProgress, onOpenVocab, user })
 
 // --- APP ROOT ---
 // --- APP ROOT (REPLACE THIS ENTIRE COMPONENT) ---
+// --- NEW COMPONENT: Deck & Language Manager (Place before App component) ---
+const DeckSelector = ({ decks, currentDeckId, onChangeDeck, onAddDeck }) => {
+  const [isCreating, setIsCreating] = useState(false);
+  const [newDeckData, setNewDeckData] = useState({ title: '', language: 'English' });
+
+  const handleCreate = () => {
+    if (!newDeckData.title) return;
+    onAddDeck(newDeckData.title, newDeckData.language);
+    setIsCreating(false);
+    setNewDeckData({ title: '', language: 'English' });
+  };
+
+  const activeDeck = decks[currentDeckId];
+
+  return (
+    <div className="bg-slate-800 text-white p-4 shrink-0">
+      <div className="flex justify-between items-center max-w-md mx-auto">
+        
+        {/* Left: Current Selected Deck */}
+        <div className="flex items-center gap-3 overflow-hidden">
+          <div className="bg-indigo-500 p-2 rounded-lg shrink-0">
+            <Languages className="w-5 h-5 text-white" />
+          </div>
+          <div className="flex flex-col overflow-hidden">
+            <span className="text-[10px] text-indigo-300 font-bold uppercase tracking-wider">Current Deck</span>
+            <div className="relative">
+                <select 
+                value={currentDeckId} 
+                onChange={(e) => onChangeDeck(e.target.value)}
+                className="bg-transparent font-bold text-lg focus:outline-none cursor-pointer appearance-none text-white w-full pr-4 truncate"
+                >
+                {Object.values(decks).map(deck => (
+                    <option key={deck.id} value={deck.id} className="text-slate-900">
+                    {deck.language} - {deck.title}
+                    </option>
+                ))}
+                </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Add Button */}
+        <button 
+          onClick={() => setIsCreating(true)}
+          className="bg-indigo-600 hover:bg-indigo-500 p-2 rounded-full transition-colors shrink-0 shadow-lg border border-indigo-400"
+        >
+          <Plus className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Modal for adding new deck */}
+      {isCreating && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+          <div className="bg-white text-slate-800 p-6 rounded-2xl shadow-2xl w-full max-w-sm animate-in zoom-in">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <Plus className="w-6 h-6 text-indigo-600" /> Create New Deck
+            </h3>
+            
+            <label className="block text-sm font-bold text-slate-500 mb-1">Language</label>
+            <select 
+              className="w-full p-3 bg-slate-100 rounded-xl mb-4 border border-slate-200 outline-none focus:border-indigo-500"
+              value={newDeckData.language}
+              onChange={e => setNewDeckData({...newDeckData, language: e.target.value})}
+            >
+              <option value="German">German (Deutsch)</option>
+              <option value="English">English</option>
+              <option value="Spanish">Spanish (Español)</option>
+              <option value="French">French (Français)</option>
+              <option value="Japanese">Japanese (日本語)</option>
+              <option value="Korean">Korean (한국어)</option>
+              <option value="Italian">Italian (Italiano)</option>
+              <option value="Chinese">Chinese (中文)</option>
+            </select>
+
+            <label className="block text-sm font-bold text-slate-500 mb-1">Deck Name</label>
+            <input 
+              className="w-full p-3 bg-slate-100 rounded-xl mb-6 border border-slate-200 outline-none focus:border-indigo-500"
+              placeholder="e.g. Travel Basics..."
+              value={newDeckData.title}
+              onChange={e => setNewDeckData({...newDeckData, title: e.target.value})}
+            />
+
+            <div className="flex gap-3">
+              <button onClick={() => setIsCreating(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
+              <button onClick={handleCreate} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 transition-colors">Create</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- CONSTANTS: Supported Languages ---
+const SUPPORTED_LANGUAGES = [
+  { code: 'German', label: 'German (Deutsch)', flag: '🇩🇪', color: 'bg-yellow-500', speechCode: 'de-DE' },
+  { code: 'Spanish', label: 'Spanish (Español)', flag: '🇪🇸', color: 'bg-orange-500', speechCode: 'es-ES' },
+  { code: 'Italian', label: 'Italian (Italiano)', flag: '🇮🇹', color: 'bg-green-600', speechCode: 'it-IT' },
+  { code: 'French', label: 'French (Français)', flag: '🇫🇷', color: 'bg-blue-600', speechCode: 'fr-FR' },
+  { code: 'Dutch', label: 'Dutch (Nederlands)', flag: '🇳🇱', color: 'bg-orange-400', speechCode: 'nl-NL' },
+  { code: 'Russian', label: 'Russian (Русский)', flag: '🇷🇺', color: 'bg-red-600', speechCode: 'ru-RU' },
+  { code: 'Polish', label: 'Polish (Polski)', flag: '🇵🇱', color: 'bg-rose-500', speechCode: 'pl-PL' },
+  { code: 'Czech', label: 'Czech (Čeština)', flag: '🇨🇿', color: 'bg-blue-600', speechCode: 'cs-CZ' },
+];
+
+// --- NEW COMPONENT: Deck Library (The Menu Page) ---
+// 修改原本的 DeckLibrary 元件
+// 加入 user, onLogin, onLogout 這三個新的 props
+// --- 修改後的 DeckLibrary (舊風格 + 刪除功能) ---
+const DeckLibrary = ({ decks, onSelectDeck, onAddDeck, onDeleteDeck, user, onLogin, onLogout }) => {
+  const [isCreating, setIsCreating] = useState(false);
+  const [newDeckData, setNewDeckData] = useState({ title: '', language: 'German' });
+  const [loadDefault, setLoadDefault] = useState(true);
+
+  const handleCreate = () => {
+    if (!newDeckData.title) return;
+    onAddDeck(newDeckData.title, newDeckData.language, loadDefault);
+    setIsCreating(false);
+    setNewDeckData({ title: '', language: 'German' });
+    setLoadDefault(true);
+  };
+
+  const getLangInfo = (langCode) => SUPPORTED_LANGUAGES.find(l => l.code === langCode) || SUPPORTED_LANGUAGES[0];
+
+  return (
+    <div className="flex flex-col h-full bg-slate-50 relative overflow-hidden">
+      {/* 1. Header (保持原本的深色圓弧設計) */}
+      <div className="bg-slate-900 text-white p-8 pt-12 pb-16 rounded-b-[3rem] shadow-xl relative z-10 flex flex-col items-center">
+         
+         {/* User Profile Section */}
+         <div className="absolute top-6 right-6">
+            {user && !user.isAnonymous ? (
+                <div className="flex items-center gap-3 bg-slate-800 p-1.5 pl-3 rounded-full border border-slate-700">
+                    <div className="text-xs text-slate-300 font-medium">
+                        {user.displayName?.split(' ')[0] || 'User'}
+                    </div>
+                    <button 
+                        onClick={onLogout}
+                        className="bg-slate-700 hover:bg-slate-600 text-xs px-3 py-1.5 rounded-full transition-colors font-bold text-slate-200"
+                    >
+                        Switch / Logout
+                    </button>
+                    <img 
+                        src={user.photoURL || `https://api.dicebear.com/9.x/adventurer/svg?seed=${user.uid}`} 
+                        alt="User" 
+                        className="w-8 h-8 rounded-full border-2 border-slate-600"
+                    />
+                </div>
+            ) : (
+                <button 
+                    onClick={onLogin}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2 rounded-full font-bold shadow-lg transition-all flex items-center gap-2"
+                >
+                    Login to Sync
+                </button>
+            )}
+         </div>
+
+         <h1 className="text-4xl font-extrabold mb-2 tracking-tight mt-4">Your Library</h1>
+         <p className="text-slate-400">Select a language deck to start learning</p>
+      </div>
+
+      {/* Grid Content */}
+      <div className="flex-1 overflow-y-auto p-6 -mt-10 relative z-20">
+        <div className="grid grid-cols-1 gap-4 max-w-md mx-auto">
+          {/* Create New Deck Button */}
+          <button 
+            onClick={() => setIsCreating(true)}
+            className="bg-white p-6 rounded-2xl shadow-sm border-2 border-dashed border-indigo-200 flex items-center justify-center gap-3 hover:bg-indigo-50 hover:border-indigo-400 transition-all group"
+          >
+            <div className="bg-indigo-100 p-3 rounded-full group-hover:bg-indigo-200 transition-colors">
+                <Plus className="w-6 h-6 text-indigo-600" />
+            </div>
+            <span className="font-bold text-slate-600 group-hover:text-indigo-700">Create New Deck</span>
+          </button>
+
+          {/* Existing Decks (Modified with Delete) */}
+          {Object.values(decks).map(deck => {
+            const langInfo = getLangInfo(deck.language);
+            const wordCount = deck.words ? deck.words.filter(w => !w.isDeleted).length : 0;
+            const masteredCount = deck.words ? deck.words.filter(w => w.status === STATUS.MASTERED && !w.isDeleted).length : 0;
+            
+            return (
+              <div 
+                key={deck.id} 
+                onClick={() => onSelectDeck(deck.id)}
+                className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md hover:border-indigo-200 transition-all text-left relative overflow-hidden group cursor-pointer"
+              >
+                {/* 🚨 DELETE BUTTON (New Feature) */}
+                {/* 只有當牌組數量 > 1 時才顯示刪除鈕，或者你想允許刪光也可以 */}
+                <button 
+                    onClick={(e) => {
+                        e.stopPropagation(); // 阻止冒泡：避免點刪除時同時打開牌組
+                        onDeleteDeck(deck.id); 
+                    }}
+                    className="absolute top-3 right-3 z-30 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                    title="Delete Deck"
+                >
+                    <Trash2 className="w-5 h-5" />
+                </button>
+
+                <div className="absolute right-0 top-0 p-10 bg-slate-50 rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity -mr-8 -mt-8 pointer-events-none"></div>
+                
+                <div className="flex items-center gap-4 relative z-10">
+                    <div className="text-4xl shadow-sm rounded-lg overflow-hidden">{langInfo.flag}</div>
+                    <div className="flex-1">
+                    <h3 className="font-bold text-slate-800 text-lg pr-6">{deck.title}</h3>
+                    <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-1">{langInfo.label}</p>
+                    <div className="flex items-center gap-3 text-xs text-slate-400">
+                        <span className="flex items-center gap-1"><ListChecks className="w-3 h-3" /> {wordCount} words</span>
+                        <span className="flex items-center gap-1 text-yellow-600"><Trophy className="w-3 h-3" /> {masteredCount} mastered</span>
+                    </div>
+                    </div>
+                    <ArrowRight className="text-slate-300 w-5 h-5 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Create Modal (保持不變) */}
+      {isCreating && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+          <div className="bg-white text-slate-800 p-6 rounded-3xl shadow-2xl w-full max-w-sm animate-in zoom-in">
+            <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                <div className="bg-indigo-100 p-2 rounded-lg"><Plus className="w-5 h-5 text-indigo-600" /></div>
+                New Language Deck
+            </h3>
+            
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Select Language</label>
+            <div className="grid grid-cols-2 gap-2 mb-6">
+                {SUPPORTED_LANGUAGES.map(lang => (
+                    <button
+                        key={lang.code}
+                        onClick={() => setNewDeckData({...newDeckData, language: lang.code})}
+                        className={`p-3 rounded-xl border-2 text-left transition-all ${newDeckData.language === lang.code ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200'}`}
+                    >
+                        <div className="text-2xl mb-1">{lang.flag}</div>
+                        <div className={`text-xs font-bold ${newDeckData.language === lang.code ? 'text-indigo-700' : 'text-slate-600'}`}>{lang.code}</div>
+                    </button>
+                ))}
+            </div>
+
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Deck Name</label>
+            <input 
+              className="w-full p-4 bg-slate-50 rounded-xl mb-6 border-2 border-transparent focus:bg-white focus:border-indigo-500 outline-none transition-all font-bold text-slate-700"
+              placeholder="e.g. Travel Basics..."
+              value={newDeckData.title}
+              onChange={e => setNewDeckData({...newDeckData, title: e.target.value})}
+            />
+
+            <div className="flex items-center gap-2 mb-6 ml-1 cursor-pointer" onClick={() => setLoadDefault(!loadDefault)}>
+                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${loadDefault ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white'}`}>
+                    {loadDefault && <CheckCircle className="w-3 h-3 text-white" />}
+                </div>
+                <span className="text-sm font-bold text-slate-600">Load starter vocabulary (15 words)</span>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setIsCreating(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
+              <button onClick={handleCreate} className="flex-1 py-3 bg-slate-900 text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 transition-all transform active:scale-95">Create Deck</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- APP ROOT (COMPLETE REWRITE) ---
+// --- APP ROOT (COMPLETE REWRITE) ---
+// --- APP ROOT (COMPLETE REWRITE) ---
 const App = () => {
-  const [view, setView] = useState('home'); 
-  const [vocabList, setVocabList] = useState([]);
-  const [vocabFilter, setVocabFilter] = useState('all');
+  // Start in 'home' or 'decks' depending on preference. 'home' defaults to the last active deck.
+  const [view, setView] = useState('decks');
+  
+  // [Core State Change] 'decks' replaces the original 'vocabList'
+  const [decks, setDecks] = useState({});
+  const [currentDeckId, setCurrentDeckId] = useState(null);
+  
+  // [Derived State] Dynamically calculated so child components still see a single list
+  const currentDeck = decks[currentDeckId] || Object.values(decks)[0] || { words: [], language: 'German' };
+  const currentSpeechCode = SUPPORTED_LANGUAGES.find(l => l.code === currentDeck.language)?.speechCode || 'de-DE';
+  const vocabList = currentDeck.words || [];
+
   const [db, setDb] = useState(null);
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false); // [修改點 1] 新增儲存狀態
-
+  const [isSaving, setIsSaving] = useState(false);
   const [isVideoDone, setIsVideoDone] = useState(false);
 
-  // [修改點 2] 使用 Ref 隨時備份當前的進度，用於切換帳號時的數據遷移
-  const vocabListRef = useRef([]); 
-  useEffect(() => { vocabListRef.current = vocabList; }, [vocabList]);
+  // [Ref] Back up current Decks state for anonymous data migration upon login
+  const decksRef = useRef(decks); 
+  useEffect(() => { decksRef.current = decks; }, [decks]);
 
-  // 初始化 Firebase Auth
+  // 1. Initialize Firebase Auth
   useEffect(() => {
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
@@ -2079,264 +2291,430 @@ const App = () => {
         await signInAnonymously(auth);
       }
     });
-  
     return unsubscribe;
   }, []);
 
-  // [修改點 3] 核心資料同步邏輯 (包含遷移與讀取)
-  // [修改點 3] 核心資料同步邏輯 (修正版：已移除無限迴圈)
+  // 2. Core Data Sync & Migration Logic (Smart Auto-Restore)
+  // [Logic] Checks if v8 (new) data is empty. If so, forces a check for v7 (old) data to auto-migrate.
+  // 2. Core Data Sync & Migration Logic (Smart Auto-Restore)
+  
+  // 2. Core Data Sync (Clean Version - No Migration)
   useEffect(() => {
     if (!authReady || !db || !user) return;
     setLoading(true);
     
-    // 指向使用者的雲端資料庫路徑
-    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'vocab_ultimate_v7'); 
+    // 使用新的路徑
+    const docRef = doc(db, 'users', user.uid, 'data', 'vocab_multilingua_v1');
     
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      // 這裡我們只負責「讀取」並更新畫面，絕對不執行 saveToCloud，避免無窮迴圈
-      
+    const unsubscribe = onSnapshot(docRef, async (docSnap) => {
       if (docSnap.exists()) {
-        // --- 情況 A：雲端有資料 ---
-        console.log("Cloud update received");
-        const savedData = docSnap.data().list;
-        let merged = [];
+        // --- CASE A: 載入現有資料 (Load Existing) ---
+        console.log("Loading Cloud Data...");
+        const data = docSnap.data();
         
-        if (Array.isArray(savedData)) {
-            merged = FULL_VOCAB_DATA.map(staticItem => {
-                const savedItem = savedData.find(s => s.id === staticItem.id);
-                if (savedItem) {
-                    if (savedItem.isCustomized) return normalizeVocabItem(savedItem);
-                    return {
-                        ...staticItem, 
-                        // 展開所有已存欄位
-                        familiarity: savedItem.familiarity,
-                        status: savedItem.status,
-                        learningProgress: savedItem.learningProgress,
-                        reviewProgress: savedItem.reviewProgress,
-                        hellProgress: savedItem.hellProgress,
-                        reviewDates: savedItem.reviewDates,
-                        isNigate: savedItem.isNigate,
-                        isStarred: savedItem.isStarred,
-                        lastReviewed: savedItem.lastReviewed,
-                        isCustomized: false,
-                        isDeleted: savedItem.isDeleted || false,
-                        successStreak: savedItem.successStreak || 0
-                    };
-                }
-                return normalizeVocabItem(staticItem);
-            });
-            const custom = savedData.filter(s => !FULL_VOCAB_DATA.find(f => f.id === s.id));
-            merged = [...custom, ...merged];
-        } else {
-             merged = FULL_VOCAB_DATA.map(normalizeVocabItem);
+        // 簡單的防呆：確認資料格式大致正確
+        if (data && data.decks) {
+             setDecks(data.decks);
+             // 如果找不到 currentDeckId，就預設用第一個 deck
+             const firstDeckId = Object.keys(data.decks)[0];
+             setCurrentDeckId(data.currentDeckId || firstDeckId);
         }
-
-        // 處理遺忘機制 (Drifting) - 只更新本地狀態，不立即寫回雲端
-        const now = Date.now();
-        const oneDay = 24 * 60 * 60 * 1000;
-        const processed = merged.map(item => {
-            const timeDiff = now - (item.lastReviewed || now);
-            let newItem = item;
-            
-            
-            if (item.status === STATUS.REVIEW && timeDiff > oneDay) {
-                newItem = { ...item, status: STATUS.DRIFTING, reviewProgress: { spelling: 0, select: 0 } };
-            }
-            if (item.status === STATUS.MASTERED && timeDiff > (oneDay * 3)) {
-                newItem = { ...item, status: STATUS.DRIFTING, reviewProgress: { spelling: 0, select: 0 } };
-            }
-            if (newItem.status === STATUS.DRIFTING) {
-              
-              const hasProgress = (newItem.reviewProgress?.select > 0 || newItem.reviewProgress?.spelling > 0);
-              
-              const lastTouch = newItem.lastInteraction || now; 
-              
-              if (hasProgress && (now - lastTouch > oneDay)) {
-                  console.log(`Resetting progress for expired word: ${newItem.german}`);
-                  newItem = {
-                      ...newItem,
-                      reviewProgress: { spelling: 0, select: 0 }, 
-                  };
-              }
-            }
-            return newItem;
-        });
-
-        setVocabList(processed);
-        // [重要修改] 這裡移除了 saveToCloud(processed)，切斷了迴圈。
-        // 資料會在使用者下次玩遊戲時自然被保存。
+        setLoading(false);
 
       } else {
-        // --- 情況 B：雲端無資料 (新帳號/遷移) ---
+        // --- CASE B: 全新用戶初始化 (Fresh Start) ---
+        // 這裡完全不管舊資料，直接給他一套全新的德語牌組
+        console.log("No data found. Initializing new user...");
         
-        // 檢查 Ref 裡面有沒有剛才玩過的匿名進度
-        const currentLocalData = vocabListRef.current;
-        // 嚴格檢查：必須真的有玩過 (familiarity > 0) 才算有進度
-        const hasLocalProgress = currentLocalData && currentLocalData.length > 0 && currentLocalData.some(i => (i.familiarity > 0 || i.status > 0) && !i.isDeleted);
+        // const initDeckId = 'german_core';
+        const initDecks = {};
 
-        if (hasLocalProgress) {
-            // [關鍵] 智慧遷移：把匿名進度上傳到這個新帳號
-            console.log("Migrating local progress to new cloud account...");
-            // 這裡可以呼叫 saveToCloud，因為這只會發生一次 (存完後 docSnap.exists 就會變成 true)
-            saveToCloud(currentLocalData);
-            // 畫面保持不變，直接使用本地資料
-            setVocabList(currentLocalData);
-        } else {
-            // 如果連本地也是空的，那就初始化
-            console.log("Initializing fresh data");
-            const initList = FULL_VOCAB_DATA.map(normalizeVocabItem);
-            setVocabList(initList);
-            saveToCloud(initList);
-        }
+        // 直接寫入資料庫
+        await setDoc(docRef, { 
+          decks: initDecks, 
+          currentDeckId: null,
+          lastUpdated: new Date().toISOString() 
+        });
+        
+        // 設定本地 State
+        setDecks(initDecks);
+        setCurrentDeckId(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
     return () => unsubscribe();
   }, [authReady, db, user]);
 
-  // [修改點 4] 儲存函式增加錯誤處理與 UI 狀態
-// [Debug Version] Save function with English logs
-  // [Debug Version] Save function with English logs
-  const saveToCloud = async (newList) => {
-    // 1. Check basic conditions
-    console.log("[Save Start] Attempting to save...", { 
-        hasDb: !!db, 
-        userId: user ? user.uid : "None", 
-        dataLength: newList ? newList.length : 0 
+  // --- 新增：遺忘曲線檢查 (Strict Time Decay) ---
+  useEffect(() => {
+    // 如果沒有牌組或單字，就不執行
+    if (!currentDeck || !currentDeck.words || currentDeck.words.length === 0) return;
+
+    const ONE_DAY = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let hasChanges = false;
+
+    const updatedWords = currentDeck.words.map(item => {
+        if (item.isDeleted || item.isNigate) return item;
+
+        let newItem = { ...item };
+        // 優先使用 lastReviewed，如果沒有則使用 lastInteraction
+        const lastTouch = newItem.lastReviewed || newItem.lastInteraction || 0;
+        const timeDiff = now - lastTouch;
+
+        // 規則 1: Review (Short Term) 超過 1 天沒碰 -> 掉回 Drifting
+        if (newItem.status === STATUS.REVIEW && timeDiff > ONE_DAY) {
+            newItem = { 
+                ...newItem, 
+                status: STATUS.DRIFTING, 
+                // 掉回去時，所有 Review 進度歸零
+                reviewProgress: { spelling: 0, select: 0, reverseSelect: 0, sentence: 0 } 
+            };
+            hasChanges = true;
+        }
+        
+        // 規則 2: Mastered 超過 5 天沒碰 -> 掉回 Drifting
+        if (newItem.status === STATUS.MASTERED && timeDiff > (ONE_DAY * 5)) {
+            newItem = { 
+                ...newItem, 
+                status: STATUS.DRIFTING, 
+                successStreak: 0, // 連勝歸零
+                reviewProgress: { spelling: 0, select: 0, reverseSelect: 0, sentence: 0 } 
+            };
+            hasChanges = true;
+        }
+
+        // 規則 3: Drifting 的暫存進度過期清除
+        // 如果這個字在 Drifting 區已經救了一半，但隔了一天沒繼續救 -> 進度歸零
+        if (newItem.status === STATUS.DRIFTING) {
+            const hasProgress = (
+                (newItem.reviewProgress?.select || 0) > 0 || 
+                (newItem.reviewProgress?.spelling || 0) > 0 ||
+                (newItem.reviewProgress?.reverseSelect || 0) > 0 ||
+                (newItem.reviewProgress?.sentence || 0) > 0 
+            );
+            
+            // 使用 lastInteraction 來判斷「上次碰這個字」的時間
+            const lastInteraction = newItem.lastInteraction || now; 
+            
+            if (hasProgress && (now - lastInteraction > ONE_DAY)) {
+                console.log(`Resetting progress for expired word: ${newItem.german}`);
+                newItem = {
+                    ...newItem,
+                    reviewProgress: { spelling: 0, select: 0, reverseSelect: 0, sentence: 0 }, 
+                };
+                hasChanges = true;
+            }
+        }
+        return newItem;
     });
 
-    if (!db || !user) {
-        console.error("[Save Failed] Blocked: Database or User is not ready!");
-        return;
+    if (hasChanges) {
+        console.log("Time decay applied.");
+        setDecks(prev => {
+            const newDecks = {
+                ...prev,
+                [currentDeckId]: { ...currentDeck, words: updatedWords }
+            };
+            // 不在這裡強制 saveToCloud 以免過於頻繁寫入，
+            // 但為了確保資料一致，我們更新本地 state，下次操作時就會一併存入
+            return newDecks;
+        });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDeckId]); // 切換牌組時執行檢查
 
+  // 3. Save Function
+  const saveToCloud = async (newDecks, activeId) => {
+    if (!db || !user) return;
     setIsSaving(true);
     try {
-      // 2. Define the path (Make sure this matches 'v7' in your useEffect too!)
-      console.log("[Saving] Writing to database for user:", user.uid);
+      // 確保這裡的路徑跟上面 useEffect 的路徑一模一樣！
+      const docRef = doc(db, 'users', user.uid, 'data', 'vocab_multilingua_v1');
       
-      // Ensure this path matches the one in your useEffect!
-      const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'vocab_ultimate_v7');
-      
-      await setDoc(docRef, { list: newList, lastUpdated: new Date().toISOString() });
-      
-      console.log("[Save Success] ✅ Data successfully written to Firebase!");
+      await setDoc(docRef, { 
+          decks: newDecks, 
+          currentDeckId: activeId || currentDeckId,
+          lastUpdated: new Date().toISOString() 
+      });
     } catch (e) { 
-        // 3. Catch the specific error
-        console.error("[Save Error] ❌ Detailed error:", e); 
-        alert("Save Error: " + e.message);
+        console.error("Save Error:", e);
     } finally {
-        // Force the loading animation to stop after 500ms
         setTimeout(() => setIsSaving(false), 500);
     }
   };
 
+  const handleGoogleLogin = async () => {
+    const auth = getAuth();
+    const provider = new GoogleAuthProvider();
+
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    try {
+        await signInWithPopup(auth, provider);
+    } catch (error) {
+        // 🚨 新增這段判斷：如果是使用者自己關掉視窗，就什麼都不要做
+        if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+            console.log("User cancelled login flow");
+            return; // 直接結束，不跳 alert
+        }
+        
+        // 如果是其他真正的錯誤（例如網路斷線、設定錯誤），才跳出警告
+        console.error("Login failed", error);
+        alert("Login failed: " + error.message);
+    }
+  };
+
+  const handleLogout = () => {
+    const auth = getAuth();
+    signOut(auth).then(() => {
+         // 登出後，會觸發 useEffect 的 onAuthStateChanged
+         // 那裡會自動把你登入為「匿名帳戶」，這就達到了「換一個帳號」的效果
+         // 並且我們強制回到 DeckLibrary 畫面
+         setView('decks');
+         window.location.reload(); // 重整頁面最乾淨
+    });
+  };
+
+  // 4. CRUD Handlers 
   const handleUpdateItem = (updatedItem) => {
-      setVocabList(prev => {
-          const newList = prev.map(i => i.id === updatedItem.id ? updatedItem : i);
-          saveToCloud(newList);
-          return newList;
+      setDecks(prevDecks => {
+          const targetDeck = prevDecks[currentDeckId];
+          const newWords = targetDeck.words.map(i => i.id === updatedItem.id ? updatedItem : i);
+          const newDecks = {
+              ...prevDecks,
+              [currentDeckId]: { ...targetDeck, words: newWords }
+          };
+          saveToCloud(newDecks, currentDeckId); 
+          return newDecks;
       });
   };
 
   const handleDeleteItem = (id) => {
-      setVocabList(prev => {
-          const newList = prev.map(i => i.id === id ? { ...i, isDeleted: true } : i);
-          saveToCloud(newList);
-          return newList;
+      setDecks(prevDecks => {
+        const targetDeck = prevDecks[currentDeckId];
+        const newWords = targetDeck.words.map(i => i.id === id ? { ...i, isDeleted: true } : i);
+        const newDecks = {
+            ...prevDecks,
+            [currentDeckId]: { ...targetDeck, words: newWords }
+        };
+        saveToCloud(newDecks, currentDeckId);
+        return newDecks;
       });
-  };
-
-  const handleHardReset = async () => {
-    if(confirm("Reset entire system to start?")) {
-        const resetList = FULL_VOCAB_DATA.map(normalizeVocabItem);
-        setVocabList(resetList);
-        await saveToCloud(resetList);
-    }
   };
 
   const handleAddItem = (newItem) => {
-      setVocabList(prev => {
-          const maxId = prev.reduce((acc, curr) => Math.max(acc, curr.id), 1000);
+      setDecks(prevDecks => {
+          const targetDeck = prevDecks[currentDeckId];
+          const maxId = targetDeck.words.reduce((acc, curr) => Math.max(acc, curr.id), 1000);
           const item = normalizeVocabItem({ ...newItem, id: maxId + 1, isCustomized: true });
-          const next = [item, ...prev];
-          saveToCloud(next);
-          return next;
+          
+          const newDecks = {
+              ...prevDecks,
+              [currentDeckId]: { ...targetDeck, words: [item, ...targetDeck.words] }
+          };
+          saveToCloud(newDecks, currentDeckId);
+          return newDecks;
       });
   };
 
-  const handleOpenVocab = (filter) => { setVocabFilter(filter); setView('vocab'); };
+  // 修改 App 元件內的 handleAddDeck，接收 loadDefaults 參數
+  const handleAddDeck = (title, language, loadDefaults) => {
+    const newId = `deck_${Date.now()}`;
+    
+    // 決定要不要載入預設字
+    let starterWords = [];
+    if (loadDefaults && DEFAULT_VOCAB_SETS[language]) {
+        // 正規化單字結構
+        starterWords = DEFAULT_VOCAB_SETS[language].map((w, i) => normalizeVocabItem({
+            ...w, 
+            id: i + 1, // 重新編號
+            isCustomized: false // 標記為系統預設
+        }));
+    }
 
-  // 邏輯解釋：只要 (資料還在載) 或者 (影片還沒播完)，就顯示開場畫面
+    const newDeck = {
+        id: newId,
+        title: title,
+        language: language,
+        words: starterWords // 放入單字
+    };
+    
+    setDecks(prev => {
+        const next = { ...prev, [newId]: newDeck };
+        saveToCloud(next, newId); 
+        return next;
+    });
+    setCurrentDeckId(newId);
+    
+    // 如果有預設單字，直接回 Dashboard，不然去 Vocab 頁面加字
+    setView('home');
+  };
+
+  // --- 在 App 元件內 (handleAddDeck 下方) ---
+
+  // --- 修改後的 handleDeleteDeck (允許刪光光) ---
+  const handleDeleteDeck = (deckId) => {
+    // 1. 【已移除】原本的「至少留一個」限制
+    // if (deckKeys.length <= 1) ... (這段被拿掉了)
+
+    // 2. 確認刪除
+    if (!confirm("Are you sure you want to delete this deck? This cannot be undone.")) {
+        return;
+    }
+
+    const deckKeys = Object.keys(decks);
+    
+    // 3. 計算刪除後的「下一個作用中牌組 ID」
+    // 如果還有別的牌組，就選別的；如果刪光了，就是 null
+    const remainingKeys = deckKeys.filter(k => k !== deckId);
+    let nextActiveId = currentDeckId;
+
+    if (deckId === currentDeckId) {
+        // 如果刪掉的是當前正在看的，那就要換一個
+        nextActiveId = remainingKeys.length > 0 ? remainingKeys[0] : null;
+        setCurrentDeckId(nextActiveId);
+    }
+
+    // 4. 執行刪除
+    setDecks(prev => {
+        const newDecks = { ...prev };
+        delete newDecks[deckId];
+        
+        // 存檔 (如果 nextActiveId 是 null，就存 null，這樣下次進來就不會亂選)
+        saveToCloud(newDecks, nextActiveId);
+        
+        return newDecks;
+    });
+
+    // 5. 【關鍵保護機制】
+    // 如果刪光了 (nextActiveId 為 null)，或者刪掉的是當前牌組
+    // 強制跳轉回 'decks' (圖書館頁面)，避免停留在 Dashboard 導致崩潰
+    if (!nextActiveId || deckId === currentDeckId) {
+        setView('decks');
+    }
+  };
+
+  const handleSelectDeck = (deckId) => {
+    setCurrentDeckId(deckId);
+    saveToCloud(decks, deckId);
+    setView('home'); // 選完牌組後，進入 Dashboard
+  };
+
+  const handleHardReset = async () => {
+    if(confirm("Reset ENTIRE deck to defaults? This cannot be undone.")) {
+        // ⭕️ 抓取當前語言的預設單字，如果沒有就給空陣列或預設值
+        const defaultWords = DEFAULT_VOCAB_SETS[currentDeck.language] || DEFAULT_VOCAB_SETS['German'];
+        
+        const resetDeck = {
+            ...currentDeck,
+            // ⭕️ 重新載入正確語言的 15 個預設單字
+            words: defaultWords.map((w, i) => normalizeVocabItem({ 
+                ...w, 
+                id: i + 1,
+                isCustomized: false
+            }))
+        };
+        
+        setDecks(prev => {
+            const next = { ...prev, [currentDeckId]: resetDeck };
+            saveToCloud(next, currentDeckId);
+            return next;
+        });
+    }
+  };
+
+  const handleOpenVocab = (filter) => { setVocabFilter(filter); setView('vocab'); };
+  const [vocabFilter, setVocabFilter] = useState('all');
+
   if (loading || !isVideoDone) {
     return (
-      // 1. 背景設為黑色 (bg-black)，這樣影片的邊界就會跟背景融合
       <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
-        
         <video
-          autoPlay
-          muted
-          playsInline
+          autoPlay muted playsInline
           onEnded={() => setIsVideoDone(true)} 
-          // 2. [關鍵修改] 改成 object-contain
-          // 意思：保持 1:1 比例，完整顯示在螢幕內，不要裁切
           className="absolute inset-0 w-full h-full object-contain"
         >
           <source src="/loading.mp4" type="video/mp4" />
         </video>
-
       </div>
     );
   }
 
   return (
-    <div className="h-screen w-full bg-slate-200 flex items-center justify-center font-sans">
-      <div className="w-full max-w-md h-full md:h-[90vh] bg-white md:rounded-[2rem] overflow-hidden shadow-2xl relative">
+  <div className="h-screen w-full bg-slate-200 flex items-center justify-center font-sans">
+    <div className="w-full max-w-md h-full md:h-[90vh] bg-white md:rounded-[2rem] overflow-hidden shadow-2xl relative flex flex-col">
+        
+        {isSaving && (
+            <div className="absolute top-4 right-4 z-50 bg-white/80 backdrop-blur text-indigo-600 text-xs font-bold px-3 py-1 rounded-full shadow-sm flex items-center gap-2 border border-indigo-100 animate-in fade-in slide-in-from-top-2">
+                <Loader2 className="w-3 h-3 animate-spin" /> Saving...
+            </div>
+        )}
+
+        <div className="flex-1 overflow-hidden relative flex flex-col">
           
-          {/* [修改點 5] 畫面右上角顯示儲存中動畫 */}
-          {isSaving && (
-              <div className="absolute top-4 right-4 z-50 bg-white/80 backdrop-blur text-indigo-600 text-xs font-bold px-3 py-1 rounded-full shadow-sm flex items-center gap-2 border border-indigo-100 animate-in fade-in slide-in-from-top-2">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Saving...
-              </div>
+          {view === 'decks' && (
+             <DeckLibrary 
+                decks={decks} 
+                user={user} // 傳入使用者資訊
+                onLogin={handleGoogleLogin} // 傳入登入函式
+                onLogout={handleLogout} // 傳入登出函式
+                onSelectDeck={handleSelectDeck}
+                onAddDeck={handleAddDeck}
+                onDeleteDeck={handleDeleteDeck}
+             />
           )}
 
           {view === 'home' && (
               <Dashboard 
-              vocabList={vocabList} 
-              onStartMode={setView} 
-              resetProgress={handleHardReset} 
-              onOpenVocab={handleOpenVocab}
-              user={user} 
+                  vocabList={vocabList} 
+                  onStartMode={setView} 
+                  resetProgress={handleHardReset} 
+                  onOpenVocab={handleOpenVocab}
+                  user={user} 
+                  currentLanguage={currentDeck.language}
+                  onSwitchDeck={() => setView('decks')} 
+
+                  onLogin={handleGoogleLogin}
+                  onLogout={handleLogout}
               />
           )}
+
           {(view === 'learning' || view === 'review' || view === 'hell') && (
               <SessionController 
                   mode={view} 
                   vocabList={vocabList} 
+                  langCode={currentSpeechCode}
                   onComplete={() => setView('home')}
                   onUpdateItem={handleUpdateItem}
               />
           )}
+
           {view.startsWith('arcade-') && (
               <ArcadeContainer 
                   vocabList={vocabList} 
                   gameType={view.replace('arcade-', '')}
+                  langCode={currentSpeechCode}
                   onBack={() => setView('home')} 
                   onUpdateItem={handleUpdateItem}
               />
           )}
+
           {view === 'vocab' && (
               <VocabBrowser 
-                vocabList={vocabList} 
-                onBack={() => setView('home')} 
-                onUpdateItem={handleUpdateItem}
-                onAddItem={handleAddItem}
-                onDeleteItem={handleDeleteItem}
-                initialFilter={vocabFilter}
+                  vocabList={vocabList} 
+                  langCode={currentSpeechCode}
+                  onBack={() => setView('home')} 
+                  onUpdateItem={handleUpdateItem}
+                  onAddItem={handleAddItem}
+                  onDeleteItem={handleDeleteItem}
+                  initialFilter={vocabFilter}
+                  currentLanguage={currentDeck.language}
               />
           )}
-      </div>
+        </div>
     </div>
+  </div>
   );
 };
 
