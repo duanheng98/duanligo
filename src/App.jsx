@@ -2579,6 +2579,13 @@ const App = () => {
     try {
         await signInWithPopup(auth, provider);
     } catch (error) {
+        // 🚨 新增這段判斷：如果是使用者自己關掉視窗，就什麼都不要做
+        if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+            console.log("User cancelled login flow");
+            return; // 直接結束，不跳 alert
+        }
+        
+        // 如果是其他真正的錯誤（例如網路斷線、設定錯誤），才跳出警告
         console.error("Login failed", error);
         alert("Login failed: " + error.message);
     }
