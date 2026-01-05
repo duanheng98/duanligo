@@ -263,18 +263,34 @@ const speak = (text, langCode = 'de-DE') => {
     // 3. 過濾出所有符合該語言的聲音
     const availableVoices = voices.filter(v => v.lang.replace('_', '-').startsWith(shortLang));
 
-    // 4. 【關鍵選妃邏輯】優先順序：Google > Siri > Enhanced > Premium > 任何符合的
-    let selectedVoice = availableVoices.find(v => v.name.includes("Google") && v.lang.includes(shortLang)) // Chrome 首選
-                     || availableVoices.find(v => v.name.includes("Siri") && v.lang.includes(shortLang))   // Mac 首選 (聽起來最自然)
-                     || availableVoices.find(v => v.name.includes("Enhanced") && v.lang.includes(shortLang)) // Mac 次選 (增強版)
-                     || availableVoices.find(v => v.name.includes("Premium") && v.lang.includes(shortLang))  // 其他高級版
-                     || availableVoices.find(v => v.lang === targetLang) // 完全符合代碼
-                     || availableVoices[0]; // 沒魚蝦也好
+    // 4. 【關鍵選妃邏輯】優先順序：Enhanced > Premium > Google > Default (但排除 Compact/Low quality)
+    // 首先排除掉明確低品質的語音
+    const qualityVoices = availableVoices.filter(v => 
+        !v.name.includes("Compact") && 
+        !v.name.includes("(compact)") &&
+        !v.name.includes("low quality")
+    );
+    
+    let selectedVoice = 
+        // iOS 增強版最優先（品質最好）
+        qualityVoices.find(v => (v.name.includes("Enhanced") || v.name.includes("Premium")) && v.lang.includes(shortLang))
+        // Google 語音（Chrome 上通常不錯）
+        || qualityVoices.find(v => v.name.includes("Google") && v.lang.includes(shortLang))
+        // iOS Siri 語音（不帶 Compact 標籤的）
+        || qualityVoices.find(v => v.lang.includes(shortLang) && !v.name.includes("Compact"))
+        // 完全匹配語言代碼
+        || qualityVoices.find(v => v.lang === targetLang)
+        // 任何符合語言的（最後備選）
+        || qualityVoices[0]
+        || availableVoices[0]; // 真的沒有好的再退回任何可用的
 
     if (selectedVoice) {
         utterance.voice = selectedVoice;
         // 打開 F12 Console 可以看到現在到底是用誰在講話，方便抓錯
         console.log(`🔊 Speaking with: ${selectedVoice.name} (${selectedVoice.lang})`);
+        console.log(`   Voice quality indicators: localService=${selectedVoice.localService}, default=${selectedVoice.default}`);
+    } else {
+        console.warn("⚠️ No suitable voice found for language:", langCode);
     }
 
     synth.speak(utterance);
