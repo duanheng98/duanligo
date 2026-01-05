@@ -235,6 +235,7 @@ const SESSION_APPEARANCE_LIMIT = 5;
 const shuffleArray = (array) => [...array].sort(() => Math.random() - 0.5);
 
 // --- 修改 speak 函式 ---
+// --- 修改 speak 函式 (高品質語音版) ---
 const speak = (text, langCode = 'de-DE') => {
   if (!text) return;
   if ('speechSynthesis' in window) {
@@ -245,12 +246,23 @@ const speak = (text, langCode = 'de-DE') => {
     utterance.lang = langCode;
     utterance.rate = 0.9;
 
-    // 🚨 關鍵修正：強制抓取對應語言的「系統聲音檔」
-    // 這能解決 Mac 上預設聲音亂跳回英文或德文的問題
     const voices = synth.getVoices();
-    // 1. 找完全符合 (e.g., 'es-ES')
-    let targetVoice = voices.find(v => v.lang === langCode);
-    // 2. 找不到則找部分符合 (e.g., 'es-MX' 也可以用在 'es-ES')
+    
+    // 🚨 修正邏輯：優先挑選「高品質」的聲音
+    // 1. 先找 Google 的聲音 (在 Chrome 上這通常是最好的)
+    let targetVoice = voices.find(v => v.lang === langCode && v.name.includes("Google"));
+    
+    // 2. 如果沒有，找包含 "Enhanced" (增強版) 或 "Premium" 的聲音 (Mac Safari/System)
+    if (!targetVoice) {
+         targetVoice = voices.find(v => v.lang === langCode && (v.name.includes("Enhanced") || v.name.includes("Premium")));
+    }
+    
+    // 3. 還是沒有，才找任何符合該語言代碼的 (但排除掉一些已知品質差的，如果需要的話)
+    if (!targetVoice) {
+        targetVoice = voices.find(v => v.lang === langCode);
+    }
+
+    // 4. 最後手段：找語言開頭符合的 (如 'de' 找 'de-AT')
     if (!targetVoice) {
         const shortLang = langCode.split('-')[0];
         targetVoice = voices.find(v => v.lang.startsWith(shortLang));
@@ -258,6 +270,7 @@ const speak = (text, langCode = 'de-DE') => {
     
     if (targetVoice) {
         utterance.voice = targetVoice;
+        // console.log("Using high-quality voice:", targetVoice.name); // 可以打開這個看它選了誰
     }
 
     synth.speak(utterance);
