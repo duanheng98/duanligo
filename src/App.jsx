@@ -236,41 +236,45 @@ const shuffleArray = (array) => [...array].sort(() => Math.random() - 0.5);
 
 // --- 修改 speak 函式 ---
 // --- 修改 speak 函式 (高品質語音版) ---
+// --- 修改 speak 函式 (究極音質版) ---
 const speak = (text, langCode = 'de-DE') => {
   if (!text) return;
   if ('speechSynthesis' in window) {
     const synth = window.speechSynthesis;
+    
+    // 1. 確保聲音列表已載入 (Chrome 有時需要這步)
+    let voices = synth.getVoices();
+    if (voices.length === 0) {
+        // 如果還沒載入，設個延遲重試一次，避免靜音
+        setTimeout(() => speak(text, langCode), 100);
+        return;
+    }
+
     synth.cancel(); // 停止上一句
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = langCode;
-    utterance.rate = 0.9;
+    utterance.rate = 0.9; // 語速 0.9 比較適合學習，覺得太慢可改成 1.0
 
-    const voices = synth.getVoices();
-    
-    // 🚨 修正邏輯：優先挑選「高品質」的聲音
-    // 1. 先找 Google 的聲音 (在 Chrome 上這通常是最好的)
-    let targetVoice = voices.find(v => v.lang === langCode && v.name.includes("Google"));
-    
-    // 2. 如果沒有，找包含 "Enhanced" (增強版) 或 "Premium" 的聲音 (Mac Safari/System)
-    if (!targetVoice) {
-         targetVoice = voices.find(v => v.lang === langCode && (v.name.includes("Enhanced") || v.name.includes("Premium")));
-    }
-    
-    // 3. 還是沒有，才找任何符合該語言代碼的 (但排除掉一些已知品質差的，如果需要的話)
-    if (!targetVoice) {
-        targetVoice = voices.find(v => v.lang === langCode);
-    }
+    // 2. 正規化語言代碼 (處理 mac 系統有時用底線 de_DE 的問題)
+    const targetLang = langCode.replace('_', '-');
+    const shortLang = targetLang.split('-')[0]; // e.g., 'de', 'en'
 
-    // 4. 最後手段：找語言開頭符合的 (如 'de' 找 'de-AT')
-    if (!targetVoice) {
-        const shortLang = langCode.split('-')[0];
-        targetVoice = voices.find(v => v.lang.startsWith(shortLang));
-    }
-    
-    if (targetVoice) {
-        utterance.voice = targetVoice;
-        // console.log("Using high-quality voice:", targetVoice.name); // 可以打開這個看它選了誰
+    // 3. 過濾出所有符合該語言的聲音
+    const availableVoices = voices.filter(v => v.lang.replace('_', '-').startsWith(shortLang));
+
+    // 4. 【關鍵選妃邏輯】優先順序：Google > Siri > Enhanced > Premium > 任何符合的
+    let selectedVoice = availableVoices.find(v => v.name.includes("Google") && v.lang.includes(shortLang)) // Chrome 首選
+                     || availableVoices.find(v => v.name.includes("Siri") && v.lang.includes(shortLang))   // Mac 首選 (聽起來最自然)
+                     || availableVoices.find(v => v.name.includes("Enhanced") && v.lang.includes(shortLang)) // Mac 次選 (增強版)
+                     || availableVoices.find(v => v.name.includes("Premium") && v.lang.includes(shortLang))  // 其他高級版
+                     || availableVoices.find(v => v.lang === targetLang) // 完全符合代碼
+                     || availableVoices[0]; // 沒魚蝦也好
+
+    if (selectedVoice) {
+        utterance.voice = selectedVoice;
+        // 打開 F12 Console 可以看到現在到底是用誰在講話，方便抓錯
+        console.log(`🔊 Speaking with: ${selectedVoice.name} (${selectedVoice.lang})`);
     }
 
     synth.speak(utterance);
