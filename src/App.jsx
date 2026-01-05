@@ -238,15 +238,15 @@ const shuffleArray = (array) => [...array].sort(() => Math.random() - 0.5);
 // --- 修改 speak 函式 (高品質語音版) ---
 // --- 修改 speak 函式 (究極音質版) ---
 // --- 修改 speak 函式 (嚴格過濾版) ---
+// --- 修改 speak 函式 (排擠 Sandy 特別版) ---
 const speak = (text, langCode = 'de-DE') => {
   if (!text) return;
   if ('speechSynthesis' in window) {
     const synth = window.speechSynthesis;
     
     let voices = synth.getVoices();
-    // 簡單的重試機制
     if (voices.length === 0) {
-        setTimeout(() => speak(text, langCode), 100);
+        setTimeout(() => speak(text, langCode), 50);
         return;
     }
 
@@ -256,34 +256,33 @@ const speak = (text, langCode = 'de-DE') => {
     utterance.lang = langCode;
     utterance.rate = 0.9;
 
-    const targetLang = langCode.replace('_', '-');
-    const shortLang = targetLang.split('-')[0];
+    const shortLang = langCode.split('-')[0]; // 例如 'de'
 
-    // 1. 先抓出所有該語言的聲音
-    const allLangVoices = voices.filter(v => v.lang.replace('_', '-').startsWith(shortLang));
-
-    // 2. 【關鍵】建立「黑名單」過濾器
-    // 排除含有 "Compact", "Eloquence" (舊版), "Grandpa", "Grandma" 等通常音質較差的關鍵字
-    const BAD_VOICE_KEYWORDS = ["Compact", "Eloquence", "Zarvox", "Trinoids", "Whisper", "Bells", "Organ"];
-    
-    const highQualityVoices = allLangVoices.filter(v => 
-        !BAD_VOICE_KEYWORDS.some(bad => v.name.includes(bad))
+    // 1. 抓出所有該語言的聲音
+    const allLangVoices = voices.filter(v => 
+        v.lang.replace('_', '-').startsWith(shortLang)
     );
 
-    // 3. 決定候選池：如果有好聲音就用好聲音池，真的完全沒有才只好用爛聲音池
-    const candidateVoices = highQualityVoices.length > 0 ? highQualityVoices : allLangVoices;
-
-    // 4. 精英選拔 (Google > Siri > Premium > Enhanced > 完全符合 > 隨便一個)
-    let selectedVoice = candidateVoices.find(v => v.name.includes("Google")) 
-                     || candidateVoices.find(v => v.name.includes("Siri")) 
-                     || candidateVoices.find(v => v.name.includes("Premium"))
-                     || candidateVoices.find(v => v.name.includes("Enhanced"))
-                     || candidateVoices.find(v => v.lang === targetLang)
-                     || candidateVoices[0];
+    // 2. 【選妃邏輯】依照好聽程度排序
+    let selectedVoice = 
+        // 第一順位：Google 語音 (Chrome 最好聽)
+        allLangVoices.find(v => v.name.includes("Google")) ||
+        
+        // 第二順位：Siri / Enhanced / Premium (Mac 高級語音)
+        allLangVoices.find(v => v.name.includes("Siri") || v.name.includes("Enhanced") || v.name.includes("Premium")) ||
+        
+        // 第三順位：Mac 常見的「好聽」德文人名 (Anna 是最標準的 Mac 德文女聲)
+        allLangVoices.find(v => ["Anna", "Petra", "Markus", "Viktor", "Yannick"].some(goodName => v.name.includes(goodName))) ||
+        
+        // 第四順位：只要名字裡面「沒有 Sandy」的任何聲音，都比 Sandy 好
+        allLangVoices.find(v => !v.name.includes("Sandy")) ||
+        
+        // 第五順位 (絕望)：真的沒別的了，只好用 Sandy
+        allLangVoices[0];
 
     if (selectedVoice) {
         utterance.voice = selectedVoice;
-        // console.log(`🔊 Speaking with: ${selectedVoice.name}`);
+        // console.log(`✅ Selected Voice: ${selectedVoice.name}`); // 這裡應該會顯示 Anna 或 Google，不再是 Sandy
     }
 
     synth.speak(utterance);
